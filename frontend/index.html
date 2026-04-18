@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RODIA — Diagnostic Connecté</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/chart.min.js"></script>
+</head>
+<body>
+
+  <!-- ══════════════════ TOP BAR ══════════════════ -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-brand">
+        <span class="logo">RODIA</span>
+        <span class="logo-sub">by Lyvenia · Diagnostic Connecté</span>
+      </div>
+    </div>
+    <div class="topbar-center">
+      <button type="button" class="theme-toggle" id="btnThemeToggle" title="Changer le thème" aria-label="Changer le thème">
+        <span class="theme-toggle-label" id="themeModeLabel">Nuit</span>
+        <span class="theme-toggle-track">
+          <span class="theme-toggle-thumb"></span>
+        </span>
+        <span class="theme-toggle-label" id="themeModeLabelR">Jour</span>
+      </button>
+    </div>
+    <div class="topbar-right">
+      <div class="connection-badge" id="connectionBadge">
+        <span class="badge-dot" id="badgeDot"></span>
+        <span id="badgeLabel">Déconnecté</span>
+      </div>
+      <span id="simLabel" class="hidden"></span>
+    </div>
+  </header>
+
+  <!-- ══════════════════ LAYOUT ══════════════════ -->
+  <div class="layout">
+
+    <!-- ── Sidebar : Flotte ── -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">🚗 Flotte</span>
+        <button type="button" class="btn btn-primary btn-sm" id="btnNewDiag">+ Nouveau</button>
+      </div>
+      <div class="sidebar-search">
+        <input type="text" id="searchInput" class="sidebar-search-input" placeholder="🔍 VIN, marque, code DTC…" aria-label="Rechercher dans la flotte">
+      </div>
+      <div id="fleetList" class="fleet-list">
+        <div class="empty-state">Aucun véhicule</div>
+      </div>
+      <!-- Alertes patterns flotte -->
+      <div id="patternsPanel" class="patterns-panel hidden">
+        <div class="patterns-title">🔍 Codes récurrents</div>
+        <div id="patternsList"></div>
+      </div>
+      <!-- Sidebar bottom actions -->
+      <div class="sidebar-bottom">
+        <button type="button" class="btn btn-outline btn-sm sidebar-excel-btn" id="btnExportExcel">📗 Export Excel flotte</button>
+      </div>
+    </aside>
+
+    <!-- ── Main content ── -->
+    <main class="main-content">
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button type="button" class="tab-btn active" data-tab="diagnostic">📡 Diagnostic en cours</button>
+        <button type="button" class="tab-btn" data-tab="dashboard">📊 Tableau de bord</button>
+        <button type="button" class="tab-btn" data-tab="historique">🚗 Flotte</button>
+        <button type="button" class="tab-btn" data-tab="parametres">⚙️ Paramètres</button>
+      </div>
+
+      <!-- ══ Bandeau notifications globales ══ -->
+      <div id="notifBanner" class="notif-banner hidden"></div>
+
+      <!-- ═══ TAB : Diagnostic en cours ═══ -->
+      <div class="tab-panel active" id="tab-diagnostic">
+
+        <!-- Step 0 : Welcome / Connect -->
+        <div id="stepWelcome" class="step-panel">
+          <div class="welcome-card">
+            <div class="welcome-icon">🔌</div>
+            <h2>Démarrer un diagnostic</h2>
+            <p>Branchez l'adaptateur ELM327 sur le port OBD2 du véhicule,<br>
+               puis cliquez sur <strong>Lancer le diagnostic</strong>.</p>
+            <p class="hint" id="simHint">Sans adaptateur, le mode simulation sera activé automatiquement.</p>
+            <button type="button" class="btn btn-primary btn-lg" id="btnStartDiag">▶ Lancer le diagnostic</button>
+          </div>
+        </div>
+
+        <!-- Step 1 : Reading data -->
+        <div id="stepReading" class="step-panel hidden">
+          <div class="loading-card">
+            <div class="spinner"></div>
+            <p id="readingMsg">Lecture des données OBD2…</p>
+          </div>
+        </div>
+
+        <!-- Step 2 : Data ready -->
+        <div id="stepData" class="step-panel hidden">
+
+        <!-- Step indicator -->
+        <div class="wizard-indicator" id="wizardIndicator">
+          <div class="wizard-step-dot active" id="wdot1" title="Étape 1 — Lecture">
+            <span class="wdot-num">1</span>
+            <span class="wdot-label">Lecture</span>
+          </div>
+          <div class="wizard-connector"></div>
+          <div class="wizard-step-dot" id="wdotA" title="Contexte & Symptômes">
+            <span class="wdot-num">📋</span>
+            <span class="wdot-label">Contexte</span>
+          </div>
+          <div class="wizard-connector"></div>
+          <div class="wizard-step-dot" id="wdot2" title="Étape 2 — Ralenti">
+            <span class="wdot-num">2</span>
+            <span class="wdot-label">Ralenti</span>
+          </div>
+          <div class="wizard-connector"></div>
+          <div class="wizard-step-dot" id="wdot3" title="Étape 3 — Roulant">
+            <span class="wdot-num">3</span>
+            <span class="wdot-label">Roulant</span>
+          </div>
+          <div class="wizard-connector"></div>
+          <div class="wizard-step-dot" id="wdot4" title="Étape 4 — Analyse IA">
+            <span class="wdot-num">4</span>
+            <span class="wdot-label">Analyse</span>
+          </div>
+        </div>
+
+        <!-- Vehicle banner (always visible once we have VIN) -->
+        <div class="vehicle-banner" id="vehicleBanner">
+          <div class="vehicle-info">
+            <span class="vin-badge" id="vinDisplay">VIN —</span>
+            <span id="vehicleLabel">Marque / Année</span>
+            <span class="sim-tag hidden" id="simTag">🎮 Simulation</span>
+          </div>
+          <div class="vehicle-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div id="vinManualZone" class="hidden">
+              <div class="vehicle-form-grid">
+                <div class="vf-field vf-field-fleet" id="vfFleetField" style="display:none">
+                  <label class="vf-label" for="vfFleetSelect">Depuis la flotte</label>
+                  <select id="vfFleetSelect" class="vf-input" style="min-width:180px">
+                    <option value="">— Choisir un véhicule —</option>
+                  </select>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-label" for="vfMarque">Marque</label>
+                  <input type="text" id="vfMarque" class="vf-input" placeholder="Ex : Skoda, Renault…">
+                </div>
+                <div class="vf-field">
+                  <label class="vf-label" for="vfModele">Modèle</label>
+                  <input type="text" id="vfModele" class="vf-input" placeholder="Ex : Octavia, Clio…">
+                </div>
+                <div class="vf-field">
+                  <label class="vf-label" for="vfAnnee">Année</label>
+                  <input type="number" id="vfAnnee" class="vf-input" placeholder="Ex : 2019" min="1990" max="2030" style="width:90px">
+                </div>
+                <div class="vf-field">
+                  <label class="vf-label" for="vfMotorisation">Motorisation</label>
+                  <select id="vfMotorisation" class="vf-input">
+                    <option value="">— Sélectionner</option>
+                    <option value="Diesel">Diesel</option>
+                    <option value="Essence">Essence</option>
+                    <option value="Hybride">Hybride</option>
+                    <option value="Hybride rechargeable">Hybride rechargeable</option>
+                    <option value="Électrique">Électrique</option>
+                    <option value="GPL">GPL</option>
+                  </select>
+                </div>
+                <div class="vf-field" style="align-self:flex-end;display:flex;gap:6px">
+                  <button type="button" class="btn btn-sm btn-primary" id="btnApplyManualVin">✔ Valider</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="btnCancelManualVin">✕</button>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" id="btnEditVin" title="Renseigner le véhicule manuellement">✏️ Véhicule</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnNewReadDiag">🔄 Nouvelle lecture</button>
+          </div>
+        </div>
+
+        <!-- ÉTAPE 1 : Lecture DTC -->
+        <div class="wizard-card active" id="wizardStep1">
+          <div class="wizard-card-header">
+            <span class="wizard-step-badge">Étape 1</span>
+            <h3>🔍 Lecture des codes DTC</h3>
+            <p class="wizard-card-desc">Contact allumé, moteur coupé. L'outil lit le VIN et les codes d'erreur.</p>
+          </div>
+          <div class="wizard-card-body">
+            <div class="km-row">
+              <label for="inputKm">Kilométrage :</label>
+              <input type="number" id="inputKm" class="input-km" min="0" max="9999999" placeholder="ex. 85000">
+              <span>km</span>
+            </div>
+            <div id="dtcList" class="dtc-list"></div>
+            <div id="freezeFrameSection" class="freeze-frame-section hidden">
+              <div class="freeze-frame-title">📸 Freeze Frame</div>
+              <div id="freezeFrameGrid" class="freeze-frame-grid"></div>
+            </div>
+          </div>
+          <div class="wizard-card-actions" id="step1Actions">
+            <button type="button" class="btn btn-sm btn-danger-outline" id="btnClearDTC">🗑 Effacer les codes</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnShowECUScan" title="Scanner tous les modules ABS, airbag, BCM...">🔍 Scan tous modules</button>
+          </div>
+          <div class="wizard-card-summary hidden" id="step1Summary"></div>
+        </div>
+
+        <!-- ANAMNÈSE (après étape 1) -->
+        <div class="wizard-card hidden" id="wizardStepAnamnese">
+          <div class="wizard-card-header">
+            <span class="wizard-step-badge" style="background:#6c47ff">📋</span>
+            <h3>📋 Contexte & Symptômes</h3>
+            <p class="wizard-card-desc">Ces informations permettent à l'IA d'affiner considérablement son diagnostic. <strong>1 minute pour un diagnostic 3× plus précis.</strong></p>
+          </div>
+          <div class="wizard-card-body">
+
+            <!-- Triage démarrage — question clé -->
+            <div class="anamnese-section ana-triage-section">
+              <div class="anamnese-section-title">🔑 Question clé</div>
+              <div class="anamnese-row">
+                <label><strong>Le véhicule démarre-t-il ?</strong></label>
+                <div class="anamnese-checkgrid" style="grid-template-columns:1fr 1fr;max-width:320px">
+                  <label class="ana-check ana-check-large"><input type="radio" name="ana_demarre" value="oui"><span>✅ Oui, il démarre</span></label>
+                  <label class="ana-check ana-check-large"><input type="radio" name="ana_demarre" value="non"><span>❌ Non, il ne démarre pas</span></label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Chronologie -->
+            <div class="anamnese-section">
+              <div class="anamnese-section-title">⏱ Chronologie</div>
+              <div class="anamnese-row">
+                <label for="ana_depuis">Depuis quand la panne est-elle présente ?</label>
+                <select id="ana_depuis" class="anamnese-select">
+                  <option value="">— Sélectionner</option>
+                  <option value="moins d'une semaine">Moins d'une semaine</option>
+                  <option value="1 à 4 semaines">1 à 4 semaines</option>
+                  <option value="1 à 3 mois">1 à 3 mois</option>
+                  <option value="plus de 3 mois">Plus de 3 mois</option>
+                  <option value="inconnu">Inconnu</option>
+                </select>
+              </div>
+              <div class="anamnese-row">
+                <label for="ana_apres_intervention">Panne apparue après une intervention ? <span class="ana-hint">(si oui, laquelle)</span></label>
+                <input type="text" id="ana_apres_intervention" class="anamnese-input" placeholder="Ex : kit distribution à 200 000 km, remplacement batterie…">
+              </div>
+            </div>
+
+            <!-- Fréquence -->
+            <div class="anamnese-section">
+              <div class="anamnese-section-title">🔄 Fréquence de la panne</div>
+              <div class="anamnese-checkgrid">
+                <label class="ana-check"><input type="radio" name="ana_freq" value="Toujours (panne permanente)"><span>Toujours (permanente)</span></label>
+                <label class="ana-check"><input type="radio" name="ana_freq" value="Aléatoire et imprévisible"><span>Aléatoire / imprévisible</span></label>
+                <label class="ana-check"><input type="radio" name="ana_freq" value="Uniquement à froid"><span>Uniquement à froid</span></label>
+                <label class="ana-check"><input type="radio" name="ana_freq" value="Uniquement à chaud"><span>Uniquement à chaud</span></label>
+                <label class="ana-check"><input type="radio" name="ana_freq" value="Progressive (s'aggrave)"><span>Progressive (s'aggrave)</span></label>
+                <label class="ana-check"><input type="radio" name="ana_freq" value="Intermittente (parfois OK)"><span>Intermittente (parfois OK)</span></label>
+              </div>
+            </div>
+
+            <!-- Moment d'apparition -->
+            <div class="anamnese-section">
+              <div class="anamnese-section-title">📍 Quand la panne survient-elle ?</div>
+              <div class="anamnese-checkgrid">
+                <label class="ana-check"><input type="checkbox" name="ana_moment" value="Au démarrage"><span>Au démarrage</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_moment" value="En roulant"><span>En roulant</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_moment" value="À l'arrêt / ralenti"><span>À l'arrêt / ralenti</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_moment" value="Sous charge (montée, accélération)"><span>Sous charge</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_moment" value="Lors du freinage"><span>Lors du freinage</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_moment" value="Après long trajet"><span>Après long trajet</span></label>
+              </div>
+            </div>
+
+            <!-- Symptômes -->
+            <div class="anamnese-section">
+              <div class="anamnese-section-title">⚠️ Symptômes observés <span class="ana-hint">(plusieurs choix possibles)</span></div>
+              <div class="anamnese-checkgrid">
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Perte de puissance"><span>Perte de puissance</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Démarrage difficile"><span>Démarrage difficile</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Calage / extinction moteur"><span>Calage / extinction</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Vibrations anormales"><span>Vibrations anormales</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Fumée noire"><span>Fumée noire</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Fumée bleue (huile brûlée)"><span>Fumée bleue (huile)</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Fumée blanche (liquide)"><span>Fumée blanche</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Consommation excessive"><span>Conso excessive</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Voyant moteur allumé"><span>Voyant moteur</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Autre voyant allumé"><span>Autre voyant</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Surchauffe moteur"><span>Surchauffe</span></label>
+                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Régime irrégulier au ralenti"><span>Régime irrégulier</span></label>
+              </div>
+            </div>
+
+            <!-- Description acoustique + Spectrogramme -->
+            <div class="anamnese-section">
+              <div class="anamnese-section-title">🔊 Analyse acoustique <span class="ana-hint">(très important — enregistrez le son ou décrivez-le)</span></div>
+
+              <!-- Enregistreur audio -->
+              <div class="audio-recorder-zone" id="audioRecorderZone">
+                <div class="audio-recorder-controls">
+                  <button type="button" id="btnAudioRecord" class="btn-audio-record">
+                    <span class="btn-audio-icon">🎙️</span>
+                    <span id="btnAudioLabel">Enregistrer le son moteur</span>
+                  </button>
+                  <div id="audioRecordTimer" class="audio-timer hidden">0s / 10s</div>
+                  <button type="button" id="btnAudioStop" class="btn-audio-stop hidden">⏹ Arrêter</button>
+                  <button type="button" id="btnAudioClear" class="btn-audio-clear hidden">🗑 Effacer</button>
+                </div>
+                <!-- Canvas spectrogramme -->
+                <canvas id="spectrogramCanvas" class="spectrogram-canvas hidden" width="600" height="120"></canvas>
+                <!-- Résumé fréquentiel interprété -->
+                <div id="audioAnalysisResult" class="audio-analysis-result hidden"></div>
+              </div>
+
+              <div class="ana-or-divider"><span>ou décrivez manuellement</span></div>
+
+              <textarea id="ana_sons" class="anamnese-textarea" rows="2" aria-label="Bruits, odeurs ou sensations inhabituelles"
+                placeholder="Cliquetis métallique, sifflement, starter libre sans résistance, bruit de courroie, frottement sourd…"></textarea>
+            </div>
+
+            <!-- Interventions récentes -->
+            <div class="anamnese-section">
+              <div class="anamnese-section-title">🔧 Interventions récentes sur le véhicule <span class="ana-hint">(< 6 mois)</span></div>
+              <textarea id="ana_interventions" class="anamnese-textarea" rows="2" aria-label="Interventions récentes sur le véhicule"
+                placeholder="Ex : kit distribution à 200 000 km, remplacement batterie, vidange moteur, changement bougies de préchauffage, pompe HP…"></textarea>
+            </div>
+
+            <!-- Informations libres -->
+            <div class="anamnese-section">
+              <div class="anamnese-section-title">💬 Autres informations pertinentes</div>
+              <textarea id="ana_infos" class="anamnese-textarea" rows="2" aria-label="Autres informations pertinentes"
+                placeholder="Tout autre détail : nombre de tentatives de démarrage, véhicule relié à un autre par câbles, température extérieure, comportement particulier observé…"></textarea>
+            </div>
+
+          </div>
+          <div class="wizard-card-actions">
+            <button type="button" class="btn btn-primary" id="btnAnamneseConfirm">✅ Valider le contexte</button>
+            <button type="button" class="btn btn-outline" id="btnAnamneseSkip">Passer cette étape →</button>
+          </div>
+          <div class="wizard-card-summary hidden" id="anamneseSummary"></div>
+        </div>
+
+        <!-- SCAN MULTI-ECU (après étape 1) -->
+        <div class="wizard-card hidden" id="ecuScanSection" style="border:1px solid var(--border);background:var(--bg-card)">
+          <div class="wizard-card-header">
+            <span class="wizard-step-badge" style="background:#6c47ff">ECU</span>
+            <h3>🔍 Scan tous modules</h3>
+            <p class="wizard-card-desc">Lit les codes de défaut de <strong>tous les modules</strong> : ABS, airbag, BCM, climatisation, direction assistée…</p>
+          </div>
+          <div class="wizard-card-body">
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+              <label for="ecuMakeSelect" style="font-size:.85rem;color:var(--text-muted)">Constructeur :</label>
+              <select id="ecuMakeSelect" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-main);font-size:.85rem">
+                <option value="RENAULT">🇫🇷 Renault / Dacia</option>
+                <option value="SKODA">🇨🇿 Skoda / VW / Audi / SEAT</option>
+                <option value="TOYOTA">🇯🇵 Toyota / Lexus</option>
+                <option value="SUZUKI">🇯🇵 Suzuki</option>
+                <option value="FIAT">🇮🇹 Fiat / Alfa Romeo</option>
+                <option value="PEUGEOT">🇫🇷 Peugeot / Citroën / DS</option>
+                <option value="OPEL">🇩🇪 Opel / Vauxhall</option>
+                <option value="FORD">🇺🇸 Ford</option>
+                <option value="BMW">🇩🇪 BMW</option>
+                <option value="MERCEDES">🇩🇪 Mercedes-Benz</option>
+                <option value="GENERIC">🌐 Générique (OBD2 standard)</option>
+              </select>
+              <button type="button" class="btn btn-primary btn-sm" id="btnRunECUScan">🔍 Lancer le scan</button>
+            </div>
+            <div id="ecuScanLoading" class="hidden" style="text-align:center;padding:20px">
+              <div class="spinner" style="margin:0 auto 10px"></div>
+              <p id="ecuScanMsg" style="color:var(--text-muted);font-size:.9rem">Initialisation du scanner…</p>
+            </div>
+            <div id="ecuScanResults" class="hidden"></div>
+          </div>
+        </div>
+
+        <!-- ÉTAPE 2 : Ralenti -->
+        <div class="wizard-card" id="wizardStep2">
+          <div class="wizard-card-header">
+            <span class="wizard-step-badge">Étape 2</span>
+            <h3>🚗 Analyse au ralenti</h3>
+            <p class="wizard-card-desc">Démarrez le moteur et laissez-le tourner au ralenti pendant 90 secondes.</p>
+          </div>
+          <div class="wizard-card-body" id="step2Body">
+            <div id="step2ContextHint" class="step-context-hint hidden"></div>
+            <div class="wizard-instruction-box" id="step2Instruction">
+              <div class="instruction-icon">🔑</div>
+              <div class="instruction-text">
+                <strong>Démarrez le moteur</strong>
+                <span>puis cliquez sur "Démarrer la mesure"</span>
+              </div>
+            </div>
+            <div id="step2Monitor" class="hidden">
+              <div class="wizard-countdown" id="step2Countdown">90s</div>
+              <div class="monitoring-live">
+                <div class="mon-stat" id="mon2Rpm"><span class="mon-label">RPM</span><span class="mon-val">—</span></div>
+                <div class="mon-stat" id="mon2Temp"><span class="mon-label">Temp</span><span class="mon-val">—</span></div>
+                <div class="mon-stat" id="mon2Speed"><span class="mon-label">Vitesse</span><span class="mon-val">—</span></div>
+                <div class="mon-stat" id="mon2Volt"><span class="mon-label">Batterie</span><span class="mon-val">—</span></div>
+              </div>
+              <div id="step2AnomalyFeed" class="anomaly-feed"></div>
+            </div>
+          </div>
+          <div class="wizard-card-actions" id="step2Actions">
+            <button type="button" class="btn btn-success" id="btnStartStep2">▶ Démarrer la mesure</button>
+            <button type="button" class="btn btn-danger hidden" id="btnStopStep2">⏹ Arrêter la mesure</button>
+            <button type="button" class="btn btn-outline" id="btnSkipStep2">Passer cette étape →</button>
+          </div>
+          <div class="wizard-card-summary hidden" id="step2Summary"></div>
+        </div>
+
+        <!-- ÉTAPE 3 : Roulant -->
+        <div class="wizard-card" id="wizardStep3">
+          <div class="wizard-card-header">
+            <span class="wizard-step-badge">Étape 3</span>
+            <h3>🏎️ Analyse en roulant</h3>
+            <p class="wizard-card-desc">Faites un tour de 2 à 3 minutes. L'outil collecte les données sous charge.</p>
+          </div>
+          <div class="wizard-card-body" id="step3Body">
+            <div id="step3ContextHint" class="step-context-hint hidden"></div>
+            <div class="wizard-instruction-box" id="step3Instruction">
+              <div class="instruction-icon">🛣️</div>
+              <div class="instruction-text">
+                <strong>Partez faire un tour</strong>
+                <span>puis cliquez "J'ai terminé" à votre retour</span>
+              </div>
+            </div>
+            <div id="step3Monitor" class="hidden">
+              <div class="wizard-countdown open" id="step3Timer">0s</div>
+              <div class="monitoring-live">
+                <div class="mon-stat" id="mon3Rpm"><span class="mon-label">RPM</span><span class="mon-val">—</span></div>
+                <div class="mon-stat" id="mon3Temp"><span class="mon-label">Temp</span><span class="mon-val">—</span></div>
+                <div class="mon-stat" id="mon3Speed"><span class="mon-label">Vitesse</span><span class="mon-val">—</span></div>
+                <div class="mon-stat" id="mon3Volt"><span class="mon-label">Batterie</span><span class="mon-val">—</span></div>
+              </div>
+              <div id="step3AnomalyFeed" class="anomaly-feed"></div>
+            </div>
+          </div>
+          <div class="wizard-card-actions" id="step3Actions">
+            <button type="button" class="btn btn-success" id="btnStartStep3">▶ Démarrer la mesure</button>
+            <button type="button" class="btn btn-outline" id="btnSkipStep3">Passer cette étape →</button>
+          </div>
+          <div class="wizard-card-summary hidden" id="step3Summary"></div>
+        </div>
+
+        <!-- ÉTAPE 4 : Analyse IA -->
+        <div class="wizard-card" id="wizardStep4">
+          <div class="wizard-card-header">
+            <span class="wizard-step-badge">Étape 4</span>
+            <h3>🤖 Analyse IA complète</h3>
+            <p class="wizard-card-desc">L'IA croise les codes DTC, les données au ralenti et en conduite pour un diagnostic précis.</p>
+          </div>
+          <div class="wizard-card-body">
+            <div id="step4ContextHint" class="step-context-hint hidden"></div>
+            <div id="aiLoading" class="loading-card hidden">
+              <div class="spinner"></div>
+              <p id="aiLoadingMsg">Analyse en cours…</p>
+            </div>
+            <div id="aiResults" class="hidden"></div>
+          </div>
+          <div class="wizard-card-actions" id="step4Actions">
+            <div id="anaReminderBanner" class="ana-reminder-banner hidden">
+              📋 <strong>Contexte & Symptômes non renseigné</strong> — remplissez-le pour un diagnostic plus précis
+              <button type="button" class="ana-reminder-btn" onclick="anamneseScrollTo()">Remplir maintenant</button>
+            </div>
+            <button type="button" class="btn btn-primary btn-lg" id="btnRunAnalysis">🤖 Lancer l'analyse complète</button>
+          </div>
+        </div>
+
+        <!-- Action bar (save/export) -->
+        <div id="actionBar" class="action-bar hidden">
+          <button type="button" class="btn btn-success" id="btnSave">💾 Sauvegarder</button>
+          <button type="button" class="btn btn-primary" id="btnExportPDF">📄 Exporter PDF</button>
+          <button type="button" class="btn btn-outline" id="btnExportClientPDF">🧾 Fiche client</button>
+          <div class="save-feedback hidden" id="saveFeedback">✅ Diagnostic sauvegardé</div>
+        </div>
+
+        <!-- Chat IA -->
+        <div id="chatSection" class="chat-section hidden">
+          <h3 class="section-title" style="margin-bottom:12px">💬 Assistance IA</h3>
+          <div id="chatMessages" class="chat-messages">
+            <div class="chat-hint">Posez une question sur le diagnostic en cours…</div>
+          </div>
+          <!-- Enregistrement audio -->
+          <div id="audioRecordBar" class="audio-record-bar hidden">
+            <div class="audio-record-indicator">
+              <span class="audio-rec-dot"></span>
+              <span id="audioRecTimer">0s</span>
+              <span style="color:var(--text-muted);font-size:.8rem">Enregistrement en cours… (max 8s)</span>
+            </div>
+            <button type="button" class="btn btn-danger btn-sm" id="btnStopRecord">⏹ Arrêter</button>
+          </div>
+          <div id="chatAudioAnalysisResult" class="audio-analysis-result hidden"></div>
+          <div class="chat-input-row">
+            <button type="button" class="btn btn-outline btn-sm audio-mic-btn" id="btnRecordAudio" title="Enregistrer un bruit moteur pour analyse IA">🎙️</button>
+            <textarea id="chatInput" class="chat-input" placeholder="Ex : Que risque-t-il si je roule avec ce code ?" rows="2" aria-label="Message à envoyer à l'assistant IA"></textarea>
+            <button type="button" class="btn btn-primary" id="btnChatSend">Envoyer</button>
+          </div>
+        </div>
+
+        </div><!-- /stepData -->
+
+      </div><!-- /tab-diagnostic -->
+
+
+      <!-- ═══ TAB : Tableau de bord ═══ -->
+      <div class="tab-panel hidden" id="tab-dashboard">
+        <div class="dash-layout">
+
+          <!-- Date du jour -->
+          <div class="dash-date-bar">
+            <span id="dashDateLabel"></span>
+          </div>
+
+          <!-- Row 1 : Santé + Derniers diagnostics -->
+          <div class="dash-row">
+
+            <!-- Santé de la flotte -->
+            <div class="dash-card" id="dashHealthCard">
+              <div class="dash-card-title">🏥 Santé de la flotte</div>
+              <div class="dash-avg-wrap">
+                <div class="dash-avg-score" id="dashAvgScore">--</div>
+                <div class="dash-avg-label" id="dashAvgLabel">Chargement…</div>
+              </div>
+              <div class="dash-health-grid" id="dashHealthGrid">
+                <div class="dash-empty">Aucun véhicule</div>
+              </div>
+            </div>
+
+            <!-- Derniers diagnostics -->
+            <div class="dash-card dash-card-wide" id="dashDiagsCard">
+              <div class="dash-card-title">📋 Derniers diagnostics</div>
+              <div id="dashRecentDiags">
+                <div class="dash-empty">Aucun diagnostic enregistré</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Row 2 : Maintenance -->
+          <div class="dash-card dash-card-full" id="dashMaintCard">
+            <div class="dash-maint-header">
+              <div class="dash-card-title">🔧 Maintenance &amp; Révisions</div>
+              <div class="dash-maint-controls">
+                <select id="dashVehicleSelect" class="dash-select">
+                  <option value="">Tous les véhicules</option>
+                </select>
+                <button type="button" class="btn btn-primary btn-sm" id="btnAddMaintItem">+ Ajouter</button>
+              </div>
+            </div>
+
+            <!-- Alertes urgentes -->
+            <div id="dashMaintAlerts"></div>
+
+            <!-- Liste des items de maintenance -->
+            <div id="dashMaintList">
+              <div class="dash-empty">Sélectionnez un véhicule pour voir sa maintenance</div>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /tab-dashboard -->
+
+      <!-- Modal : Marquer comme fait -->
+      <div id="modalMarkDone" class="modal-overlay hidden">
+        <div class="modal-box">
+          <h3 style="margin:0 0 16px">✅ Marquer comme fait</h3>
+          <input type="hidden" id="mdVin">
+          <input type="hidden" id="mdItemId">
+          <div class="form-group">
+            <label for="mdDate">Date de l'intervention</label>
+            <input type="date" id="mdDate" class="form-input">
+          </div>
+          <div class="form-group">
+            <label for="mdKm">Kilométrage actuel</label>
+            <input type="number" id="mdKm" class="form-input" placeholder="Ex: 85000">
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="mdCancel">Annuler</button>
+            <button type="button" class="btn btn-primary" id="mdConfirm">✅ Confirmer</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal : Ajouter item maintenance -->
+      <div id="modalAddMaint" class="modal-overlay hidden">
+        <div class="modal-box">
+          <h3 style="margin:0 0 16px">➕ Ajouter un type de maintenance</h3>
+          <div class="form-group">
+            <label for="amLabel">Libellé</label>
+            <input type="text" id="amLabel" class="form-input" placeholder="Ex: Révision boîte de vitesses">
+          </div>
+          <div class="form-group">
+            <label for="amCategory">Catégorie</label>
+            <input type="text" id="amCategory" class="form-input" placeholder="Moteur, Freinage, Autre…">
+          </div>
+          <div class="form-group">
+            <label for="amIcon">Icône (emoji)</label>
+            <input type="text" id="amIcon" class="form-input" placeholder="🔧" maxlength="4" style="width:80px">
+          </div>
+          <div class="form-group">
+            <label for="amType">Type</label>
+            <select id="amType" class="form-input">
+              <option value="scheduled">Planifié (date / km)</option>
+              <option value="wear">Usure visuelle</option>
+            </select>
+          </div>
+          <!-- Scheduled fields -->
+          <div id="amScheduledFields">
+            <div class="form-group">
+              <label for="amIntervalKm">Intervalle km (optionnel)</label>
+              <input type="number" id="amIntervalKm" class="form-input" placeholder="Ex: 10000">
+            </div>
+            <div class="form-group">
+              <label for="amIntervalMonths">Intervalle mois (optionnel)</label>
+              <input type="number" id="amIntervalMonths" class="form-input" placeholder="Ex: 12">
+            </div>
+          </div>
+          <!-- Wear fields -->
+          <div id="amWearFields" class="hidden">
+            <div class="form-group">
+              <label for="amWearStates">États d'usure (un par ligne)</label>
+              <textarea id="amWearStates" class="form-input" rows="4" placeholder="OK&#10;Légèrement usé&#10;À surveiller&#10;À changer"></textarea>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="amCancel">Annuler</button>
+            <button type="button" class="btn btn-primary" id="amConfirm">➕ Ajouter</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ TAB : Flotte (id kept as tab-historique for compatibility) ═══ -->
+      <div class="tab-panel hidden" id="tab-historique">
+
+        <!-- Barre supérieure : stats + actions -->
+        <div class="fleet-topbar">
+          <div class="fleet-stats-row">
+            <div class="fstat">
+              <span class="fstat-val" id="fstatTotal">—</span>
+              <span class="fstat-lbl">Véhicules</span>
+            </div>
+            <div class="fstat-sep"></div>
+            <div class="fstat fstat-urgent">
+              <span class="fstat-val" id="fstatUrgentVal">—</span>
+              <span class="fstat-lbl">Urgences</span>
+            </div>
+            <div class="fstat-sep"></div>
+            <div class="fstat fstat-warn">
+              <span class="fstat-val" id="fstatWarnVal">—</span>
+              <span class="fstat-lbl">À surveiller</span>
+            </div>
+            <div class="fstat-sep"></div>
+            <div class="fstat fstat-ok">
+              <span class="fstat-val" id="fstatOkVal">—</span>
+              <span class="fstat-lbl">OK</span>
+            </div>
+          </div>
+          <div class="fleet-topbar-actions">
+            <button type="button" class="btn btn-outline btn-sm" id="btnMonthlyReport">📊 Rapport mensuel</button>
+          </div>
+        </div>
+
+        <!-- Corps en deux colonnes -->
+        <div class="fleet-body">
+
+          <!-- Sidebar gauche : liste des véhicules -->
+          <aside class="fleet-sidebar-panel">
+            <div class="fleet-sidebar-top">
+              <input type="text" class="fleet-search-box" id="fleetSearchBox" placeholder="🔍 Rechercher…" aria-label="Rechercher un véhicule">
+              <button type="button" class="btn btn-primary btn-sm" id="btnAddVehicle" title="Ajouter un véhicule">＋ Véhicule</button>
+            </div>
+            <div class="fleet-vehicle-list" id="fleetVehicleList">
+              <div class="fleet-empty-msg">Aucun véhicule enregistré</div>
+            </div>
+          </aside>
+
+          <!-- Panneau droit : détail véhicule -->
+          <div class="fleet-detail-panel">
+            <!-- Cockpit flotte (affiché quand aucun véhicule sélectionné) -->
+            <div id="fleetEmptyState">
+              <div id="fleetCockpit">
+                <div class="cockpit-loading">Chargement du tableau de bord…</div>
+              </div>
+            </div>
+            <!-- Détail véhicule -->
+            <div id="historyContainer" class="hidden"></div>
+          </div>
+
+        </div>
+
+        <!-- Éléments gardés pour compatibilité JS (masqués) -->
+        <div id="fleetManagement" class="hidden">
+          <div id="fleetDashboard"></div>
+          <div id="groupsList"></div>
+        </div>
+
+      </div>
+
+      <!-- ═══ TAB : Paramètres ═══ -->
+      <div class="tab-panel hidden" id="tab-parametres">
+        <div class="settings-page">
+          <div class="settings-col-left">
+
+          <!-- Mode de fonctionnement — masqué en build client -->
+          <div class="settings-block" id="simModeBlock">
+            <div class="settings-block-title">🔄 Mode de fonctionnement</div>
+            <div class="mode-switcher">
+              <button class="mode-btn active" id="modeBtnSim" onclick="setMode('simulation')">
+                <span class="mode-icon">🎮</span>
+                <span class="mode-label">Simulation</span>
+                <span class="mode-desc">Véhicules et données fictifs — aucun matériel requis</span>
+              </button>
+              <button class="mode-btn" id="modeBtnReal" onclick="setMode('reel')">
+                <span class="mode-icon">🔌</span>
+                <span class="mode-label">Mode réel</span>
+                <span class="mode-desc">Connexion à un vrai véhicule via adaptateur ELM327</span>
+              </button>
+            </div>
+            <div class="mode-status" id="modeStatus"></div>
+          </div>
+
+          <!-- Configuration port OBD2 -->
+          <div class="settings-block" id="settingsPortBlock">
+            <div class="settings-block-title">🔌 Configuration port OBD2</div>
+            <div class="settings-form">
+              <div class="settings-row">
+                <label for="cfgPort">Port série :</label>
+                <input type="text" id="cfgPort" class="settings-input" placeholder="COM3 ou /dev/ttyUSB0">
+                <span class="settings-hint">Windows : COM3, COM4… | Linux/Mac : /dev/ttyUSB0</span>
+              </div>
+              <div class="settings-row">
+                <label for="cfgBaudrate">Baudrate :</label>
+                <select id="cfgBaudrate" class="settings-input">
+                  <option value="9600">9600 (auto-détection ELM327)</option>
+                  <option value="38400">38400</option>
+                  <option value="115200">115200</option>
+                </select>
+              </div>
+              <div class="settings-row">
+                <label for="cfgTimeout">Timeout (s) :</label>
+                <input type="number" id="cfgTimeout" class="settings-input" min="1" max="60" value="10">
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn-primary" id="btnSaveCfg">💾 Sauvegarder la configuration</button>
+                <button type="button" class="btn btn-outline" id="btnDetectPort">🔍 Détecter automatiquement</button>
+              </div>
+              <div id="detectStatus" class="hidden" style="margin-top:8px;font-size:.85rem"></div>
+            </div>
+          </div>
+
+          <!-- Identité du garage -->
+          <div class="settings-block">
+            <div class="settings-block-title">🏪 Identité du garage</div>
+            <p class="settings-desc">Ces informations apparaissent sur les fiches client et les rapports PDF.</p>
+            <div class="settings-form">
+              <div class="settings-row">
+                <label for="garageNom">Nom du garage :</label>
+                <input type="text" id="garageNom" class="settings-input" placeholder="Garage Dupont Auto">
+              </div>
+              <div class="settings-row">
+                <label for="garageAdresse">Adresse :</label>
+                <input type="text" id="garageAdresse" class="settings-input" placeholder="12 rue de la Mécanique, 75001 Paris">
+              </div>
+              <div class="settings-row">
+                <label for="garageTel">Téléphone :</label>
+                <input type="text" id="garageTel" class="settings-input" placeholder="01 23 45 67 89">
+              </div>
+              <div class="settings-row">
+                <label for="garageEmail">Email :</label>
+                <input type="email" id="garageEmail" class="settings-input" placeholder="contact@garage-dupont.fr">
+              </div>
+              <div class="settings-row">
+                <label for="garageSiret">SIRET :</label>
+                <input type="text" id="garageSiret" class="settings-input" placeholder="123 456 789 00012" maxlength="20">
+              </div>
+              <button type="button" class="btn btn-primary" id="btnSaveGarage">💾 Sauvegarder</button>
+              <span id="garageSaveStatus" style="margin-left:10px;font-size:.82rem;color:var(--success)"></span>
+            </div>
+          </div>
+
+          <!-- Test de connexion -->
+          <div class="settings-block">
+            <div class="settings-block-title">🔍 Test de connexion</div>
+            <p class="settings-desc">Lance un diagnostic complet de la connexion OBD2 et retourne le résultat étape par étape.</p>
+            <button type="button" class="btn btn-primary" id="btnTestConn">▶ Lancer le test</button>
+            <div id="testResults" class="test-results hidden"></div>
+          </div>
+
+          <!-- Clé API Anthropic -->
+          <div class="settings-block">
+            <div class="settings-block-title">🔑 Clé API Anthropic (IA)</div>
+            <p class="settings-desc">Nécessaire pour l'analyse des codes DTC et le chat. Obtenez une clé sur console.anthropic.com.</p>
+            <div class="settings-row">
+              <label for="inputApiKey">Clé API :</label>
+              <input type="password" id="inputApiKey" class="settings-input" placeholder="sk-ant-api03-…" autocomplete="off" style="font-family:monospace;letter-spacing:.05em">
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+              <button type="button" class="btn btn-primary" onclick="saveApiKey()">💾 Enregistrer</button>
+              <button type="button" class="btn btn-secondary" onclick="toggleApiKeyVisibility()" id="btnShowKey">👁 Afficher</button>
+              <span id="apiKeySaveStatus" style="font-size:.85rem;color:var(--text-dim)"></span>
+            </div>
+          </div>
+
+          <!-- État du système -->
+          <div class="settings-block">
+            <div class="settings-block-title">🧩 État du système</div>
+            <div id="systemStatus" class="system-status-grid"></div>
+          </div>
+
+          <!-- Techniciens -->
+          <div class="settings-block">
+            <div class="settings-block-title">👤 Techniciens</div>
+            <p class="settings-desc">Liste des techniciens disponibles lors de la sauvegarde d'un diagnostic.</p>
+            <div id="techList" class="tech-list"></div>
+            <div class="settings-row" style="margin-top:10px">
+              <input type="text" id="newTechName" class="settings-input" placeholder="Nom du technicien" aria-label="Nom du nouveau technicien">
+              <button type="button" class="btn btn-outline" id="btnAddTech">+ Ajouter</button>
+            </div>
+          </div>
+
+          <!-- Sauvegarde -->
+          <div class="settings-block">
+            <div class="settings-block-title">💾 Sauvegarde des données</div>
+            <p class="settings-desc">Crée une copie de sauvegarde horodatée de la flotte (10 dernières conservées).</p>
+            <button type="button" class="btn btn-primary" id="btnBackup">💾 Sauvegarder maintenant</button>
+            <div id="backupStatus" style="margin-top:10px;font-size:.85rem;color:var(--text-dim)"></div>
+          </div>
+
+          </div><!-- /settings-col-left -->
+          <div class="settings-col-right">
+
+          <!-- Aide & Support -->
+          <div class="settings-block">
+            <div class="settings-block-title">🆘 Aide &amp; Support</div>
+            <p class="settings-desc">Retrouvez les réponses aux questions fréquentes ou contactez l'équipe Lyvenia.</p>
+
+            <div class="faq-list">
+
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Comment connecter l'adaptateur ELM327 ?</span>
+                  <span class="faq-chevron">›</span>
+                </button>
+                <div class="faq-answer">
+                  Branchez l'adaptateur ELM327 sur le port OBD2 du véhicule (sous le tableau de bord côté conducteur). Allumez le contact <strong>sans démarrer le moteur</strong>. Dans l'onglet Paramètres, vérifiez que le port COM est correct, puis lancez un diagnostic depuis l'onglet principal.
+                </div>
+              </div>
+
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Pourquoi l'analyse IA ne fonctionne pas ?</span>
+                  <span class="faq-chevron">›</span>
+                </button>
+                <div class="faq-answer">
+                  L'analyse IA nécessite une clé API Anthropic valide. Rendez-vous sur <strong>console.anthropic.com</strong> pour en obtenir une, puis saisissez-la dans la section "Clé API Anthropic" ci-dessus. Vérifiez également votre connexion internet.
+                </div>
+              </div>
+
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Le véhicule n'est pas reconnu / VIN invalide</span>
+                  <span class="faq-chevron">›</span>
+                </button>
+                <div class="faq-answer">
+                  Certains véhicules anciens ou aftermarket ne transmettent pas de VIN. Vous pouvez saisir manuellement la marque, le modèle et l'année via le bouton <strong>Véhicule</strong> lors du diagnostic. Ces informations enrichissent l'analyse IA.
+                </div>
+              </div>
+
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Comment exporter un rapport PDF ?</span>
+                  <span class="faq-chevron">›</span>
+                </button>
+                <div class="faq-answer">
+                  Après un diagnostic complet avec analyse IA, un bouton <strong>📄 Exporter PDF</strong> apparaît dans la barre d'actions. Le rapport inclut les codes DTC, l'analyse, les données temps réel et les recommandations.
+                </div>
+              </div>
+
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Comment mettre à jour RODIA ?</span>
+                  <span class="faq-chevron">›</span>
+                </button>
+                <div class="faq-answer">
+                  Contactez l'équipe Lyvenia pour recevoir la dernière version. Les mises à jour du logiciel sont fournies par votre interlocuteur commercial ou via le support technique.
+                </div>
+              </div>
+
+            </div>
+
+            <div class="faq-contact">
+              <span class="faq-contact-text">Un problème non résolu ?</span>
+              <a href="mailto:support@lyvenia.fr" class="btn btn-outline btn-sm">✉️ Contacter le support</a>
+            </div>
+          </div>
+
+          <!-- Informations légales -->
+          <div class="settings-block legal-block">
+            <div class="settings-block-title">⚖️ Informations légales</div>
+
+            <!-- Disclaimer principal -->
+            <div class="legal-disclaimer">
+              <div class="legal-disclaimer-icon">⚠️</div>
+              <div class="legal-disclaimer-text">
+                <strong>Outil d'aide au diagnostic — pas de substitut professionnel</strong>
+                <p>RODIA est un logiciel d'aide à l'interprétation des données OBD2. Les analyses, suggestions et recommandations générées par le logiciel sont fournies à titre <strong>indicatif uniquement</strong>. Elles ne remplacent en aucun cas l'avis, le diagnostic ou l'intervention d'un professionnel de l'automobile qualifié.</p>
+                <p>Lyvenia décline toute responsabilité quant aux décisions techniques, mécaniques ou de sécurité prises sur la seule base des résultats fournis par RODIA. En cas de doute, consultez toujours un garagiste agréé.</p>
+              </div>
+            </div>
+
+            <!-- Infos produit & éditeur -->
+            <div class="legal-meta-grid">
+              <div class="legal-meta-item">
+                <span class="legal-meta-label">Logiciel</span>
+                <span class="legal-meta-value">RODIA — Diagnostic Connecté</span>
+              </div>
+              <div class="legal-meta-item">
+                <span class="legal-meta-label">Éditeur</span>
+                <span class="legal-meta-value">Lyvenia</span>
+              </div>
+              <div class="legal-meta-item">
+                <span class="legal-meta-label">Version</span>
+                <span class="legal-meta-value" id="legalVersion">1.0.0</span>
+              </div>
+              <div class="legal-meta-item">
+                <span class="legal-meta-label">Analyse IA</span>
+                <span class="legal-meta-value">Propulsé par Claude · Anthropic</span>
+              </div>
+              <div class="legal-meta-item">
+                <span class="legal-meta-label">Contact</span>
+                <span class="legal-meta-value"><a href="mailto:contact@lyvenia.fr">contact@lyvenia.fr</a></span>
+              </div>
+              <div class="legal-meta-item">
+                <span class="legal-meta-label">Usage</span>
+                <span class="legal-meta-value">Professionnel — usage interne</span>
+              </div>
+            </div>
+
+            <p class="legal-copyright">© <span id="legalYear"></span> Lyvenia — Tous droits réservés. RODIA est un logiciel propriétaire. Toute reproduction ou distribution non autorisée est interdite.</p>
+          </div>
+
+          </div><!-- /settings-col-right -->
+        </div>
+      </div><!-- /tab-parametres -->
+
+    </main>
+  </div><!-- /layout -->
+
+
+  <!-- ══════════════════ MODALS ══════════════════ -->
+
+  <!-- Confirmation effacement DTC -->
+  <div class="modal-overlay hidden" id="modalClearDTC">
+    <div class="modal">
+      <h3>⚠️ Effacer les codes DTC ?</h3>
+      <p>Cette action supprime les codes de défaut mémorisés dans l'ECU. Le bus CAN sera mis en pause le temps de l'opération.</p>
+      <div class="clear-dtc-checklist">
+        <div class="checklist-item">🔑 Contactez allumé (position ON), moteur tournant ou coupé</div>
+        <div class="checklist-item">📡 Ne pas bouger le câble OBD2 pendant l'opération</div>
+        <div class="checklist-item">⏱️ L'opération prend environ 5 secondes</div>
+        <div class="checklist-item">🚗 Après effacement : roulez 10–15 min pour que l'ECU se recalibre</div>
+      </div>
+      <p class="modal-hint">⚠️ Certains codes permanents (PDTC) ne peuvent pas être effacés par outil — le calculateur les supprime seul après plusieurs cycles sans défaut.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-danger" id="btnConfirmClear">Oui, effacer</button>
+        <button type="button" class="btn btn-outline" id="btnCancelClear">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Configuration port -->
+  <div class="modal-overlay hidden" id="modalSettings">
+    <div class="modal">
+      <h3>⚙️ Configuration</h3>
+      <div class="form-row">
+        <label for="inputPort">Port OBD2 (ELM327) :</label>
+        <input type="text" id="inputPort" class="input-port" placeholder="COM3 ou /dev/ttyUSB0">
+      </div>
+      <p class="modal-hint">Windows : COM3, COM4… | Linux/Mac : /dev/ttyUSB0</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="btnSaveConfig">Sauvegarder</button>
+        <button type="button" class="btn btn-outline" id="btnCancelSettings">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes technicien -->
+  <div class="modal-overlay hidden" id="modalNotes">
+    <div class="modal modal-wide">
+      <h3>📝 Notes du technicien</h3>
+      <textarea id="notesTextarea" class="notes-textarea"
+                placeholder="Saisissez vos observations, interventions effectuées…"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="btnSaveNotes">Enregistrer</button>
+        <button type="button" class="btn btn-outline" id="btnCancelNotes">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ajouter une réparation -->
+  <!-- Modal : Ajouter un véhicule manuellement -->
+  <div class="modal-overlay hidden" id="modalAddVehicle">
+    <div class="modal modal-wide">
+      <h3>🚗 Ajouter un véhicule</h3>
+      <div class="form-row">
+        <label for="avMarque">Marque <span style="color:#ef4444">*</span></label>
+        <input type="text" id="avMarque" class="input-port" placeholder="Ex : Renault, Skoda, BMW…">
+      </div>
+      <div class="form-row">
+        <label for="avModele">Modèle <span style="color:#ef4444">*</span></label>
+        <input type="text" id="avModele" class="input-port" placeholder="Ex : Clio, Octavia, Série 3…">
+      </div>
+      <div class="form-row">
+        <label for="avAnnee">Année</label>
+        <input type="number" id="avAnnee" class="input-port" placeholder="Ex : 2019" min="1990" max="2030">
+      </div>
+      <div class="form-row">
+        <label for="avMotorisation">Motorisation</label>
+        <select id="avMotorisation" class="input-port">
+          <option value="">— Sélectionner</option>
+          <option value="Diesel">Diesel</option>
+          <option value="Essence">Essence</option>
+          <option value="Hybride">Hybride</option>
+          <option value="Hybride rechargeable">Hybride rechargeable</option>
+          <option value="Électrique">Électrique</option>
+          <option value="GPL">GPL</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="avKm">Kilométrage</label>
+        <input type="number" id="avKm" class="input-port" placeholder="Ex : 85000" min="0">
+      </div>
+      <div class="form-row">
+        <label for="avVin">VIN <span style="color:var(--text-muted);font-size:.8rem">(optionnel)</span></label>
+        <input type="text" id="avVin" class="input-port" placeholder="Laisser vide pour générer automatiquement" maxlength="17" style="text-transform:uppercase">
+      </div>
+      <div class="form-row">
+        <label for="avSurnom">Surnom / Immat.</label>
+        <input type="text" id="avSurnom" class="input-port" placeholder="Ex : AB-123-CD ou Camion blanc">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-success" id="btnConfirmAddVehicle">➕ Ajouter</button>
+        <button type="button" class="btn btn-outline" id="btnCancelAddVehicle">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="modalRepair">
+    <div class="modal modal-wide">
+      <h3>🔧 Ajouter une réparation</h3>
+      <div class="form-row">
+        <label for="repairDate">Date :</label>
+        <input type="date" id="repairDate" class="input-port">
+      </div>
+      <div class="form-row">
+        <label for="repairDesc">Description :</label>
+        <input type="text" id="repairDesc" class="input-port" placeholder="Ex : Remplacement vanne EGR">
+      </div>
+      <div class="form-row">
+        <label for="repairParts">Pièces :</label>
+        <input type="text" id="repairParts" class="input-port" placeholder="Ex : Vanne EGR Renault OEM ref. 8200461045">
+      </div>
+      <div class="form-row">
+        <label for="repairCost">Coût (€) :</label>
+        <input type="number" id="repairCost" class="input-port" placeholder="Ex : 350" min="0">
+      </div>
+      <div class="form-row">
+        <label for="repairTech">Technicien :</label>
+        <input type="text" id="repairTech" class="input-port" placeholder="Nom du technicien">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-success" id="btnConfirmRepair">Enregistrer</button>
+        <button type="button" class="btn btn-outline" id="btnCancelRepair">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alertes kilométrage -->
+  <div class="modal-overlay hidden" id="modalAlerts">
+    <div class="modal modal-wide">
+      <h3>🔔 Alertes kilométrage</h3>
+      <p class="modal-hint">Recevez une alerte quand le kilométrage du véhicule dépasse un seuil (vidange, courroie…).</p>
+      <div id="alertsList" class="alerts-list"></div>
+      <hr style="border-color:var(--border);margin:14px 0">
+      <div class="form-row">
+        <label for="alertLabel">Libellé :</label>
+        <input type="text" id="alertLabel" class="input-port" placeholder="Ex : Vidange moteur">
+      </div>
+      <div class="form-row">
+        <label for="alertKm">Seuil km :</label>
+        <input type="number" id="alertKm" class="input-port" placeholder="Ex : 100000" min="0">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-success" id="btnConfirmAlert">+ Ajouter</button>
+        <button type="button" class="btn btn-outline" id="btnCancelAlerts">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rapport mensuel — sélecteur mois -->
+  <div class="modal-overlay hidden" id="modalMonthly">
+    <div class="modal">
+      <h3>📊 Rapport mensuel</h3>
+      <div class="form-row">
+        <label for="selectMonth">Mois :</label>
+        <select id="selectMonth" class="input-port">
+          <option value="1">Janvier</option><option value="2">Février</option>
+          <option value="3">Mars</option><option value="4">Avril</option>
+          <option value="5">Mai</option><option value="6">Juin</option>
+          <option value="7">Juillet</option><option value="8">Août</option>
+          <option value="9">Septembre</option><option value="10">Octobre</option>
+          <option value="11">Novembre</option><option value="12">Décembre</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="selectYear">Année :</label>
+        <input type="number" id="selectYear" class="input-port" value="2025" min="2020" max="2099">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="btnConfirmMonthly">Générer PDF</button>
+        <button type="button" class="btn btn-outline" id="btnCancelMonthly">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comparer deux diagnostics -->
+  <div class="modal-overlay hidden" id="modalCompare">
+    <div class="modal modal-wide">
+      <h3>🔄 Comparer deux diagnostics</h3>
+      <div id="compareContent" class="compare-content"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="btnCancelCompare">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Technicien responsable -->
+  <div class="modal-overlay hidden" id="modalTechnicien">
+    <div class="modal">
+      <h3>👤 Technicien responsable</h3>
+      <div class="form-row">
+        <label for="selectTechnicien">Technicien :</label>
+        <select id="selectTechnicien" class="settings-input"></select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-success" id="btnConfirmTech">Confirmer</button>
+        <button type="button" class="btn btn-outline" id="btnCancelTech">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modifier véhicule (code / surnom) -->
+  <div id="modalEditVehicle" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3>✏️ Modifier le véhicule</h3>
+      <label for="editVehicleCodeType">Code véhicule</label>
+      <div class="code-builder" style="margin-bottom:14px">
+        <select id="editVehicleCodeType" class="settings-input code-type-select" onchange="updateCodePreview('edit')">
+          <option value="V">V — Véhicule léger</option>
+          <option value="T">T — Taxi / VTC</option>
+          <option value="A">A — Ambulance / SMUR</option>
+          <option value="U">U — Utilitaire</option>
+          <option value="C">C — Camion / PL</option>
+          <option value="M">M — Moto / 2 roues</option>
+        </select>
+        <input id="editVehicleCodeNum" type="text" placeholder="1" maxlength="6" class="settings-input code-num-input"
+          oninput="updateCodePreview('edit')" style="text-align:center">
+        <div class="code-preview" id="editCodePreview">V1</div>
+      </div>
+      <label for="editVehicleSurnom">Surnom <span style="color:var(--text-muted);font-size:.78rem">(optionnel)</span></label>
+      <input id="editVehicleSurnom" type="text" placeholder="Ex : Clio blanche, Ambulance Nord..." class="settings-input" style="width:100%;margin-bottom:4px">
+      <div class="modal-actions">
+        <button id="btnCancelEditVehicle" class="btn btn-outline">Annuler</button>
+        <button id="btnConfirmEditVehicle" class="btn btn-primary">Sauvegarder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nouveau véhicule — attribution du code -->
+  <div id="modalAssignCode" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3>🆕 Nouveau véhicule dans la flotte</h3>
+      <p style="font-size:.88rem;color:var(--text-muted);margin-bottom:16px" id="assignCodeVehicleLabel">
+        Attribuez-lui un code pour le retrouver facilement.
+      </p>
+      <label for="assignCodeType">Type de véhicule</label>
+      <div class="code-builder" style="margin-bottom:16px">
+        <select id="assignCodeType" class="settings-input code-type-select" onchange="onAssignTypeChange()">
+          <option value="V">V — Véhicule léger</option>
+          <option value="T">T — Taxi / VTC</option>
+          <option value="A">A — Ambulance / SMUR</option>
+          <option value="U">U — Utilitaire</option>
+          <option value="C">C — Camion / PL</option>
+          <option value="M">M — Moto / 2 roues</option>
+        </select>
+        <input id="assignCodeNum" type="text" placeholder="1" maxlength="6" class="settings-input code-num-input"
+          oninput="updateCodePreview('assign')" style="text-align:center">
+        <div class="code-preview" id="assignCodePreview">V1</div>
+      </div>
+      <p style="font-size:.75rem;color:var(--text-muted);margin-bottom:14px">
+        Le numéro est auto-suggéré mais vous pouvez le modifier librement.
+      </p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeAssignCodeModal(true)">Passer</button>
+        <button class="btn btn-primary" onclick="confirmAssignCode()">Attribuer le code</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div class="toast hidden" id="toast"></div>
+
+  <!-- Placeholders pour le monitoring standalone (références JS) -->
+  <div id="monitoringResult" class="hidden"></div>
+  <div id="monitoringAnomalyFeed" class="hidden"></div>
+  <div id="monTime" class="hidden"><span class="mon-val"></span></div>
+  <div id="monAnomalies" class="hidden"><span class="mon-val"></span></div>
+
+  <!-- ══════════════════ MODAL LOGIN LYVENIA ══════════════════ -->
+  <div id="loginOverlay" class="login-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+    <div class="login-card">
+      <div class="login-logo">
+        <span class="logo">RODIA</span>
+      </div>
+      <p class="login-tagline">by Lyvenia · Diagnostic Connecté</p>
+      <h2 id="loginTitle" class="login-title">Connexion à votre compte</h2>
+      <form id="loginForm" novalidate>
+        <div class="login-field">
+          <label for="loginEmail">Adresse email</label>
+          <input type="email" id="loginEmail" class="login-input" placeholder="votre@email.fr" required autocomplete="email">
+        </div>
+        <div class="login-field">
+          <label for="loginPassword">Mot de passe</label>
+          <input type="password" id="loginPassword" class="login-input" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <div id="loginError" class="login-error hidden"></div>
+        <button type="submit" id="btnLoginSubmit" class="btn btn-primary login-btn">
+          <span id="loginBtnText">Se connecter</span>
+        </button>
+      </form>
+      <p class="login-forgot"><a href="#" id="linkForgotPassword">Mot de passe oublié ?</a></p>
+      <p class="login-support">Problème ? <a href="mailto:contact@lyvenia.fr">contact@lyvenia.fr</a></p>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
