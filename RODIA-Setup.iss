@@ -13,8 +13,8 @@
 #define AppVersion   "1.0.0"
 #define AppPublisher "Lyvenia"
 #define AppURL       "https://lyvenia.fr/rodia.html"
-#define AppExeName   "DiagnosticAuto.exe"
-#define SourceDir    "dist\DiagnosticAuto"
+#define AppExeName   "RODIA.exe"
+#define SourceDir    "dist\RODIA"
 
 ; ── Paramètres généraux ────────────────────────────────────────────────────────
 [Setup]
@@ -73,7 +73,7 @@ Name: "startmenuicon"; \
 
 ; ── Fichiers à installer ───────────────────────────────────────────────────────
 [Files]
-; Tout le dossier dist\DiagnosticAuto\ (exe + _internal/)
+; Tout le dossier dist\RODIA\ (exe + _internal/)
 Source: "{#SourceDir}\*"; \
   DestDir: "{app}"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
