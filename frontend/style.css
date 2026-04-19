@@ -4391,6 +4391,13 @@ a  { color: var(--accent); text-decoration: none; }
   padding: .4rem .5rem;
 }
 .update-dismiss:hover { color: #e8f0e8; }
+.update-countdown {
+  font-size: .78rem;
+  color: rgba(232,240,232,.6);
+  white-space: nowrap;
+  min-width: 130px;
+  text-align: right;
+}
 .update-progress {
   display: flex;
   align-items: center;

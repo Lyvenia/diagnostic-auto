@@ -40,30 +40,31 @@ def check_update() -> dict | None:
 
 
 def download_and_apply(download_url: str, on_progress=None) -> None:
-    """Télécharge le nouvel exe et déclenche le remplacement via un script batch.
+    """Télécharge l'installateur RODIA et le lance en mode silencieux.
 
+    L'installateur Inno Setup (/VERYSILENT) remplace RODIA sans interaction
+    utilisateur et le relance automatiquement après installation.
     on_progress(pct: int) est appelé pendant le téléchargement (0-100).
-    La fonction quitte le processus RODIA une fois le script batch lancé.
     Ne fait rien en mode développement (non-frozen).
     """
     if not getattr(sys, "frozen", False):
-        # Mode dev — simuler sans quitter
         if on_progress:
             on_progress(100)
         return
 
-    current_exe = sys.executable                        # ex: C:\...\RODIA.exe
-    new_exe     = current_exe.replace(".exe", "_update.exe")
-    bat_path    = current_exe.replace(".exe", "_update.bat")
+    import tempfile
+    tmp_dir        = tempfile.gettempdir()
+    installer_path = os.path.join(tmp_dir, "RODIA-Update-Setup.exe")
+    bat_path       = os.path.join(tmp_dir, "rodia_update.bat")
 
-    # ── Téléchargement ──────────────────────────────────────────────────────
+    # ── Téléchargement de l'installateur ────────────────────────────────────
     r = requests.get(download_url, stream=True, timeout=300)
     r.raise_for_status()
 
     total      = int(r.headers.get("content-length", 0))
     downloaded = 0
 
-    with open(new_exe, "wb") as f:
+    with open(installer_path, "wb") as f:
         for chunk in r.iter_content(chunk_size=65536):
             f.write(chunk)
             downloaded += len(chunk)
@@ -73,13 +74,17 @@ def download_and_apply(download_url: str, on_progress=None) -> None:
     if on_progress:
         on_progress(100)
 
-    # ── Script de remplacement ───────────────────────────────────────────────
-    # Le .bat attend que RODIA soit fermé, remplace l'exe, puis relance.
+    # ── Lancement silencieux via batch (attend 2s que RODIA se ferme) ────────
+    # /VERYSILENT         — aucune fenêtre ni dialog
+    # /SUPPRESSMSGBOXES   — supprime les popups d'erreur
+    # /NORESTART          — pas de redémarrage Windows
+    # /CLOSEAPPLICATIONS  — ferme les processus qui bloquent les fichiers
+    # /RESTARTAPPLICATIONS — relance RODIA après installation
     bat = (
         "@echo off\n"
         "timeout /t 2 /nobreak > nul\n"
-        f'move /y "{new_exe}" "{current_exe}"\n'
-        f'start "" "{current_exe}"\n'
+        f'"{installer_path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
+        f' /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS\n'
         "del \"%~f0\"\n"
     )
     with open(bat_path, "w", encoding="utf-8") as f:

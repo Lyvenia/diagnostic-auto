@@ -4742,26 +4742,59 @@ async function startAppData() {
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 
 let _updateDownloadUrl = '';
+let _countdownTimer    = null;
+const UPDATE_DELAY_S   = 60;   // secondes avant installation automatique
+const SNOOZE_KEY       = 'rodia_update_snoozed_until';
 
 async function checkForUpdate() {
+  // Vérifier si l'utilisateur a différé la mise à jour
+  const snoozedUntil = localStorage.getItem(SNOOZE_KEY);
+  if (snoozedUntil && Date.now() < parseInt(snoozedUntil)) return;
+
   try {
     const data = await api('GET', '/api/version-info');
     if (data.update_available && data.download_url) {
       _updateDownloadUrl = data.download_url;
       document.getElementById('updateVersion').textContent =
-        `Mise à jour disponible — v${data.version}`;
+        `Mise à jour v${data.version} disponible`;
       document.getElementById('updateNotes').textContent =
         data.release_notes || '';
       document.getElementById('updateBanner').style.display = 'flex';
+      startUpdateCountdown();
     }
   } catch { /* silencieux — pas de connexion ou pas de nouvelle version */ }
 }
 
+function startUpdateCountdown() {
+  let remaining = UPDATE_DELAY_S;
+  const el = document.getElementById('updateCountdown');
+
+  _countdownTimer = setInterval(() => {
+    remaining--;
+    if (el) el.textContent = `Redémarrage dans ${remaining}s`;
+    if (remaining <= 0) {
+      clearInterval(_countdownTimer);
+      applyUpdate();
+    }
+  }, 1000);
+}
+
+function snoozeUpdate() {
+  // Différer de 24h
+  clearInterval(_countdownTimer);
+  localStorage.setItem(SNOOZE_KEY, Date.now() + 24 * 60 * 60 * 1000);
+  document.getElementById('updateBanner').style.display = 'none';
+}
+
 async function applyUpdate() {
   if (!_updateDownloadUrl) return;
-  const btn = document.getElementById('btnUpdate');
-  btn.disabled = true;
-  btn.textContent = 'Téléchargement...';
+  clearInterval(_countdownTimer);
+
+  const btn         = document.getElementById('btnUpdate');
+  const countdownEl = document.getElementById('updateCountdown');
+  btn.disabled      = true;
+  btn.textContent   = 'Téléchargement...';
+  if (countdownEl) countdownEl.textContent = 'Installation en cours…';
   document.getElementById('updateProgress').style.display = 'flex';
 
   try {
@@ -4769,22 +4802,23 @@ async function applyUpdate() {
     // Polling progression
     const poll = setInterval(async () => {
       try {
-        const s = await api('GET', '/api/update-status');
+        const s    = await api('GET', '/api/update-status');
         const fill = document.getElementById('updateProgressFill');
         const pct  = document.getElementById('updateProgressPct');
         if (fill) fill.style.width = s.progress + '%';
         if (pct)  pct.textContent  = s.progress + '%';
         if (s.error) {
           clearInterval(poll);
-          btn.disabled = false;
+          btn.disabled    = false;
           btn.textContent = 'Réessayer';
+          if (countdownEl) countdownEl.textContent = '';
           alert('Erreur lors de la mise à jour : ' + s.error);
         }
       } catch { clearInterval(poll); }
     }, 500);
-  } catch(e) {
-    btn.disabled = false;
-    btn.textContent = 'Mettre à jour';
+  } catch {
+    btn.disabled    = false;
+    btn.textContent = 'Installer maintenant';
     alert('Impossible de lancer la mise à jour.');
   }
 }

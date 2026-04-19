@@ -24,8 +24,9 @@
         <div class="update-progress-bar"><div id="updateProgressFill" class="update-progress-fill"></div></div>
         <span id="updateProgressPct">0%</span>
       </div>
-      <button id="btnUpdate" class="update-btn" onclick="applyUpdate()">Mettre à jour</button>
-      <button class="update-dismiss" onclick="document.getElementById('updateBanner').style.display='none'">Plus tard</button>
+      <span id="updateCountdown" class="update-countdown">Redémarrage dans 60s</span>
+      <button id="btnUpdate" class="update-btn" onclick="applyUpdate()">Installer maintenant</button>
+      <button class="update-dismiss" onclick="snoozeUpdate()">Plus tard</button>
     </div>
   </div>
 
