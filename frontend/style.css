@@ -4340,6 +4340,79 @@ a  { color: var(--accent); text-decoration: none; }
 }
 
 /* ══════════════════════════════════════════════════════════
+   UPDATE BANNER
+   ══════════════════════════════════════════════════════════ */
+.update-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 9999;
+  background: #1a3a1a;
+  border-bottom: 1px solid #e8b4a4;
+  padding: .6rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: .875rem;
+}
+.update-banner-left {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+.update-icon { font-size: 1.2rem; }
+.update-banner-left strong { color: #e8f0e8; display: block; font-size: .875rem; }
+.update-notes { color: #8aaa8a; font-size: .8rem; }
+.update-banner-right {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+.update-btn {
+  background: #e8b4a4;
+  color: #0d1f0d;
+  border: none;
+  padding: .4rem 1rem;
+  border-radius: 6px;
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .2s;
+}
+.update-btn:hover { background: #c49282; }
+.update-btn:disabled { opacity: .5; cursor: default; }
+.update-dismiss {
+  background: transparent;
+  border: none;
+  color: #8aaa8a;
+  font-size: .8rem;
+  cursor: pointer;
+  padding: .4rem .5rem;
+}
+.update-dismiss:hover { color: #e8f0e8; }
+.update-progress {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.update-progress-bar {
+  width: 120px;
+  height: 6px;
+  background: rgba(255,255,255,.1);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.update-progress-fill {
+  height: 100%;
+  background: #e8b4a4;
+  border-radius: 99px;
+  transition: width .3s;
+  width: 0%;
+}
+#updateProgressPct { color: #8aaa8a; font-size: .75rem; min-width: 2.5rem; }
+
+/* ══════════════════════════════════════════════════════════
    LOGIN OVERLAY LYVENIA
    ══════════════════════════════════════════════════════════ */
 

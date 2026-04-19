@@ -160,6 +160,9 @@ function applyClientBuild() {
   // Écran d'accueil : hint simulation
   const simHint = document.getElementById('simHint');
   if (simHint) simHint.style.display = 'none';
+  // Paramètres : bloc clé API Anthropic (inutile en build client, IA via Lyvenia)
+  const apiKeyBlock = document.getElementById('apiKeyBlock');
+  if (apiKeyBlock) apiKeyBlock.style.display = 'none';
 }
 
 function renderConnectionBadge() {
@@ -4734,13 +4737,71 @@ async function startAppData() {
   api('GET', '/api/config/garage').then(g => { state._garage = g; }).catch(() => {});
   renderFleetManagement();
   setInterval(refreshStatus, 10000);
-  setInterval(() => fetch('/api/heartbeat', { method: 'POST' }).catch(() => {}), 5000);
 }
+
+// ── Auto-updater ──────────────────────────────────────────────────────────────
+
+let _updateDownloadUrl = '';
+
+async function checkForUpdate() {
+  try {
+    const data = await api('GET', '/api/version-info');
+    if (data.update_available && data.download_url) {
+      _updateDownloadUrl = data.download_url;
+      document.getElementById('updateVersion').textContent =
+        `Mise à jour disponible — v${data.version}`;
+      document.getElementById('updateNotes').textContent =
+        data.release_notes || '';
+      document.getElementById('updateBanner').style.display = 'flex';
+    }
+  } catch { /* silencieux — pas de connexion ou pas de nouvelle version */ }
+}
+
+async function applyUpdate() {
+  if (!_updateDownloadUrl) return;
+  const btn = document.getElementById('btnUpdate');
+  btn.disabled = true;
+  btn.textContent = 'Téléchargement...';
+  document.getElementById('updateProgress').style.display = 'flex';
+
+  try {
+    await api('POST', '/api/apply-update', { download_url: _updateDownloadUrl });
+    // Polling progression
+    const poll = setInterval(async () => {
+      try {
+        const s = await api('GET', '/api/update-status');
+        const fill = document.getElementById('updateProgressFill');
+        const pct  = document.getElementById('updateProgressPct');
+        if (fill) fill.style.width = s.progress + '%';
+        if (pct)  pct.textContent  = s.progress + '%';
+        if (s.error) {
+          clearInterval(poll);
+          btn.disabled = false;
+          btn.textContent = 'Réessayer';
+          alert('Erreur lors de la mise à jour : ' + s.error);
+        }
+      } catch { clearInterval(poll); }
+    }, 500);
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'Mettre à jour';
+    alert('Impossible de lancer la mise à jour.');
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
   setupEvents();
   setupSearch();
   setupAuthEvents();
+
+  // Heartbeat toujours actif dès le démarrage — maintient le serveur Flask en vie
+  // même pendant l'affichage de l'écran de login
+  setInterval(() => fetch('/api/heartbeat', { method: 'POST' }).catch(() => {}), 5000);
+
+  // Vérification silencieuse des mises à jour (ne bloque pas le démarrage)
+  checkForUpdate();
 
   const authenticated = await checkAuth();
   if (authenticated) {

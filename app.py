@@ -98,6 +98,7 @@ from api.fleet_routes import bp as fleet_bp
 from api.export_routes import bp as export_bp
 from api.config_routes import bp as config_bp
 from routes.lyvenia_auth import bp as lyvenia_auth_bp
+from routes.update_routes import bp as update_bp
 
 app.register_blueprint(obd_bp)
 app.register_blueprint(analysis_bp)
@@ -105,6 +106,7 @@ app.register_blueprint(fleet_bp)
 app.register_blueprint(export_bp)
 app.register_blueprint(config_bp)
 app.register_blueprint(lyvenia_auth_bp)
+app.register_blueprint(update_bp)
 
 
 if __name__ == "__main__":

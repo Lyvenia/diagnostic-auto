@@ -10,6 +10,25 @@
 </head>
 <body>
 
+  <!-- ══════════════════ UPDATE BANNER ══════════════════ -->
+  <div id="updateBanner" class="update-banner" style="display:none">
+    <div class="update-banner-left">
+      <span class="update-icon">🔄</span>
+      <div>
+        <strong id="updateVersion">Mise à jour disponible</strong>
+        <span id="updateNotes" class="update-notes"></span>
+      </div>
+    </div>
+    <div class="update-banner-right">
+      <div id="updateProgress" class="update-progress" style="display:none">
+        <div class="update-progress-bar"><div id="updateProgressFill" class="update-progress-fill"></div></div>
+        <span id="updateProgressPct">0%</span>
+      </div>
+      <button id="btnUpdate" class="update-btn" onclick="applyUpdate()">Mettre à jour</button>
+      <button class="update-dismiss" onclick="document.getElementById('updateBanner').style.display='none'">Plus tard</button>
+    </div>
+  </div>
+
   <!-- ══════════════════ TOP BAR ══════════════════ -->
   <header class="topbar">
     <div class="topbar-left">
@@ -788,8 +807,8 @@
             <div id="testResults" class="test-results hidden"></div>
           </div>
 
-          <!-- Clé API Anthropic -->
-          <div class="settings-block">
+          <!-- Clé API Anthropic — masqué en build client (IA via serveur Lyvenia) -->
+          <div class="settings-block" id="apiKeyBlock">
             <div class="settings-block-title">🔑 Clé API Anthropic (IA)</div>
             <p class="settings-desc">Nécessaire pour l'analyse des codes DTC et le chat. Obtenez une clé sur console.anthropic.com.</p>
             <div class="settings-row">

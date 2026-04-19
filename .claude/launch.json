@@ -1,0 +1,1 @@
+{"version":"0.0.1","configurations":[{"name":"frontend-static","runtimeExecutable":"python","runtimeArgs":["-m","http.server","7842","--directory","frontend"],"port":7842}]}

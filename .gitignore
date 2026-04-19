@@ -1,0 +1,29 @@
+# Build PyInstaller
+dist/
+build/
+build2/
+installer/
+*.spec.bak
+
+# Archives
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+
+# Données locales runtime
+flotte.json
+config.json
+.heartbeat
+Ports
+RODIA_CLIENT
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
