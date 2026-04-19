@@ -4743,6 +4743,7 @@ async function startAppData() {
 
 let _updateDownloadUrl = '';
 let _countdownTimer    = null;
+let _isUpdating        = false;  // garde anti-doublon
 const UPDATE_DELAY_S   = 60;   // secondes avant installation automatique
 const SNOOZE_KEY       = 'rodia_update_snoozed_until';
 
@@ -4787,7 +4788,8 @@ function snoozeUpdate() {
 }
 
 async function applyUpdate() {
-  if (!_updateDownloadUrl) return;
+  if (!_updateDownloadUrl || _isUpdating) return;
+  _isUpdating = true;
   clearInterval(_countdownTimer);
 
   const btn         = document.getElementById('btnUpdate');
@@ -4799,7 +4801,7 @@ async function applyUpdate() {
 
   try {
     await api('POST', '/api/apply-update', { download_url: _updateDownloadUrl });
-    // Polling progression
+    // Polling progression — RODIA va se fermer quand le téléchargement est terminé
     const poll = setInterval(async () => {
       try {
         const s    = await api('GET', '/api/update-status');
@@ -4809,17 +4811,19 @@ async function applyUpdate() {
         if (pct)  pct.textContent  = s.progress + '%';
         if (s.error) {
           clearInterval(poll);
+          _isUpdating     = false;
           btn.disabled    = false;
           btn.textContent = 'Réessayer';
           if (countdownEl) countdownEl.textContent = '';
           alert('Erreur lors de la mise à jour : ' + s.error);
         }
-      } catch { clearInterval(poll); }
+      } catch { clearInterval(poll); } // RODIA se ferme = normal
     }, 500);
-  } catch {
+  } catch (e) {
+    _isUpdating     = false;
     btn.disabled    = false;
     btn.textContent = 'Installer maintenant';
-    alert('Impossible de lancer la mise à jour.');
+    alert('Erreur : ' + e.message);
   }
 }
 

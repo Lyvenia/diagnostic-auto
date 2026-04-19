@@ -1,8 +1,11 @@
 """Routes de mise à jour — vérification et application depuis le frontend."""
+import logging
 import threading
 from flask import Blueprint, jsonify, request
 from core.updater import check_update, download_and_apply
 from core.version import RODIA_VERSION
+
+log = logging.getLogger(__name__)
 
 bp = Blueprint("update", __name__, url_prefix="/api")
 
@@ -33,6 +36,7 @@ def apply_update():
     if not url:
         return jsonify({"error": "URL de téléchargement manquante"}), 400
 
+    log.info(f"apply-update demandé — url={url[:60]}...")
     _status = {"downloading": True, "progress": 0, "error": None}
 
     def _run():
