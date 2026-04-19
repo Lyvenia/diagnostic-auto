@@ -31,7 +31,7 @@ def apply_update():
     if _status["downloading"]:
         return jsonify({"error": "Téléchargement déjà en cours"}), 409
 
-    data = request.get_json() or {}
+    data = request.get_json(force=True, silent=True) or {}
     url  = data.get("download_url", "")
     if not url:
         return jsonify({"error": "URL de téléchargement manquante"}), 400
