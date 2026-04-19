@@ -21,6 +21,7 @@ hiddenimports = [
     'reportlab', 'reportlab.lib', 'reportlab.platypus', 'reportlab.pdfbase',
     'openpyxl', 'openpyxl.styles', 'openpyxl.utils',
     'pint', 'requests', 'tkinter', 'clr',
+    'shared',
 ]
 tmp_ret = collect_all('webview')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
