@@ -3,6 +3,7 @@ Export PDF des rapports de diagnostic via ReportLab.
 Design professionnel RODIA — palette vert forêt / rose crème Lyvenia.
 """
 import io
+import time as _t
 from datetime import datetime
 
 from reportlab.lib import colors
@@ -17,34 +18,103 @@ from reportlab.platypus import (
 )
 from reportlab.platypus.flowables import Flowable
 
-# ── Palette RODIA ─────────────────────────────────────────────────────────────
-C_DARK      = colors.HexColor("#0c180c")   # vert forêt profond
-C_FOREST    = colors.HexColor("#1a2e1a")   # vert forêt section
-C_GREEN     = colors.HexColor("#2d5a2d")   # vert moyen
-C_ACCENT    = colors.HexColor("#e8b4a4")   # rose crème accent
-C_ROSE      = colors.HexColor("#f2c4b8")   # rose crème clair
-C_URGENT    = colors.HexColor("#c62828")
-C_URGENT_BG = colors.HexColor("#ffebee")
-C_URGENT_HDR= colors.HexColor("#e53935")
-C_WARN      = colors.HexColor("#e65100")
-C_WARN_BG   = colors.HexColor("#fff3e0")
-C_WARN_HDR  = colors.HexColor("#fb8c00")
-C_OK        = colors.HexColor("#1b5e20")
-C_OK_BG     = colors.HexColor("#e8f5e9")
-C_OK_HDR    = colors.HexColor("#2e7d32")
-C_LIGHT     = colors.HexColor("#f4f7f4")
-C_LABEL_BG  = colors.HexColor("#e8f0e8")   # fond colonne label info table
-C_BORDER    = colors.HexColor("#c0d8c0")
-C_TEXT      = colors.HexColor("#1a2e1a")
-C_MUTED     = colors.HexColor("#5a7a5a")
+try:
+    from core.paths import LOG_PATH
+except Exception:
+    LOG_PATH = None
+
+
+def _log(msg: str) -> None:
+    """Log granulaire dans DiagnosticAuto_error.log pour tracer un crash ReportLab."""
+    if not LOG_PATH:
+        return
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"[{_t.strftime('%H:%M:%S')}] [pdf_gen] {msg}\n")
+            f.flush()
+    except Exception:
+        pass
+
+
+# ── Helpers de sécurité défensive contre les None dans les données diagnostic ──
+def _safe_dict(v) -> dict:
+    """Retourne v si c'est un dict, sinon {}."""
+    return v if isinstance(v, dict) else {}
+
+
+def _safe_list(v) -> list:
+    """Retourne v si c'est une list, sinon []."""
+    return v if isinstance(v, list) else []
+
+
+def _safe_str(v, default: str = "") -> str:
+    """Retourne str(v) si non-None, sinon default. Nettoie les chars de contrôle."""
+    if v is None:
+        return default
+    try:
+        s = str(v)
+    except Exception:
+        return default
+    # Supprime chars de contrôle (sauf \n \r \t) qui cassent reportlab
+    return "".join(c for c in s if c == "\n" or c == "\r" or c == "\t" or ord(c) >= 32)
+
+
+def _safe_para(text, style) -> Paragraph:
+    """Crée un Paragraph en garantissant du texte non-None et échappé."""
+    return Paragraph(_safe_str(text, "—") or "—", style)
+
+
+def _xml_escape(s: str) -> str:
+    """Échappe &, <, > pour ReportLab Paragraph (évite crash XML parser).
+    Préserve \\n déjà nettoyé par _safe_str."""
+    return (s.replace("&", "&amp;")
+             .replace("<", "&lt;")
+             .replace(">", "&gt;"))
+
+
+def _safe_para_escaped(text, style) -> Paragraph:
+    """Comme _safe_para mais XML-échappe le texte — à utiliser pour contenu user-provided non fiable."""
+    raw = _safe_str(text, "—") or "—"
+    return Paragraph(_xml_escape(raw), style)
+
+
+def _fmt_stat(stats: dict, key: str, unit: str) -> str:
+    """Formate une stat OBD min/max/avg en string lisible. Retourne 'N/A' si absente."""
+    st = _safe_dict(_safe_dict(stats).get(key))
+    if not st or not st.get("max"):
+        return "N/A"
+    return f"{st.get('min','?')}{unit} — {st.get('max','?')}{unit}  (moy. {st.get('avg','?')}{unit})"
+
+# ── Palette RODIA — alignée sur les tokens frontend (cream + terracotta) ─────
+# Cohérence avec frontend/style.css : --bg-base #f5efe8, --accent #a85c4a,
+# --text-main #1f3328, --text-muted #7c8d86, --success #2f7a3d, etc.
+C_DARK      = colors.HexColor("#1f3328")   # Header band — vert encre adouci
+C_FOREST    = colors.HexColor("#1f3328")   # Texte foncé / overlines
+C_GREEN     = colors.HexColor("#3d5a4e")   # Vert intermédiaire (rare)
+C_ACCENT    = colors.HexColor("#a85c4a")   # Terracotta — accent principal
+C_ROSE      = colors.HexColor("#d8a597")   # Terracotta clair (badges, hover)
+C_URGENT    = colors.HexColor("#b8302a")
+C_URGENT_BG = colors.HexColor("#fbeae8")
+C_URGENT_HDR= colors.HexColor("#b8302a")
+C_WARN      = colors.HexColor("#c2680f")
+C_WARN_BG   = colors.HexColor("#fbf1e3")
+C_WARN_HDR  = colors.HexColor("#c2680f")
+C_OK        = colors.HexColor("#2f7a3d")
+C_OK_BG     = colors.HexColor("#e9f3eb")
+C_OK_HDR    = colors.HexColor("#2f7a3d")
+C_LIGHT     = colors.HexColor("#f5efe8")   # Cream — fond léger
+C_LABEL_BG  = colors.HexColor("#ede5db")   # Cream foncé — colonne label info_table
+C_BORDER    = colors.HexColor("#d4cabd")   # Border subtle sur cream
+C_TEXT      = colors.HexColor("#1f3328")
+C_MUTED     = colors.HexColor("#7c8d86")
 C_WHITE     = colors.white
 
-# Hex strings pour usage XML dans Paragraph
-_HX_ACCENT  = "#e8b4a4"
-_HX_URGENT  = "#c62828"
-_HX_WARN    = "#e65100"
-_HX_OK      = "#1b5e20"
-_HX_MUTED   = "#5a7a5a"
+# Hex strings pour usage XML dans Paragraph (<font color>, etc.)
+_HX_ACCENT  = "#a85c4a"
+_HX_URGENT  = "#b8302a"
+_HX_WARN    = "#c2680f"
+_HX_OK      = "#2f7a3d"
+_HX_MUTED   = "#7c8d86"
 
 MONTHS_FR = [
     "", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -62,46 +132,55 @@ def _make_doc(buffer, title="RODIA"):
     def on_page(canvas, doc):
         canvas.saveState()
 
-        # ── Header band ──
-        canvas.setFillColor(C_DARK)
-        canvas.rect(0, H - 1.5*cm, W, 1.5*cm, fill=1, stroke=0)
-        # Accent stripe left
+        # ── Header band : minimaliste — ligne terracotta + nom marque ──
+        # Plus de bandeau noir massif. Juste un marqueur discret en haut de page.
         canvas.setFillColor(C_ACCENT)
-        canvas.rect(0, H - 1.5*cm, 0.45*cm, 1.5*cm, fill=1, stroke=0)
-        # Thin rose line at bottom of header
-        canvas.setFillColor(C_ACCENT)
-        canvas.rect(0, H - 1.5*cm, W, 0.12*cm, fill=1, stroke=0)
+        canvas.rect(0, H - 0.18*cm, W, 0.18*cm, fill=1, stroke=0)
 
-        canvas.setFont("Helvetica-Bold", 9)
+        canvas.setFont("Helvetica-Bold", 8)
         canvas.setFillColor(C_ACCENT)
-        canvas.drawString(1.1*cm, H - 0.9*cm, "RODIA — by Lyvenia")
+        canvas.drawString(1.5*cm, H - 0.8*cm, "RODIA  —  by Lyvenia")
         canvas.setFont("Helvetica", 8)
-        canvas.setFillColor(colors.HexColor("#8ab88a"))
-        canvas.drawRightString(W - 1*cm, H - 0.9*cm, title)
+        canvas.setFillColor(C_MUTED)
+        canvas.drawRightString(W - 1.5*cm, H - 0.8*cm, title)
 
-        # ── Footer band ──
-        canvas.setFillColor(colors.HexColor("#f0f5f0"))
-        canvas.rect(0, 0, W, 0.95*cm, fill=1, stroke=0)
-        canvas.setFillColor(C_ACCENT)
-        canvas.rect(0, 0.83*cm, W, 0.12*cm, fill=1, stroke=0)
+        # ── Footer : trait fin terracotta + meta ──
+        canvas.setStrokeColor(C_BORDER)
+        canvas.setLineWidth(0.5)
+        canvas.line(1.5*cm, 1.05*cm, W - 1.5*cm, 1.05*cm)
 
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(C_MUTED)
-        canvas.drawString(1*cm, 0.33*cm,
-            f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — RODIA Diagnostic OBD2 — Lyvenia")
+        canvas.drawString(1.5*cm, 0.6*cm,
+            f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}  —  RODIA Diagnostic OBD2")
         canvas.setFont("Helvetica-Bold", 8)
-        canvas.setFillColor(C_FOREST)
-        canvas.drawRightString(W - 1*cm, 0.33*cm, f"Page {doc.page}")
+        canvas.setFillColor(C_TEXT)
+        canvas.drawRightString(W - 1.5*cm, 0.6*cm, f"Page {doc.page}")
 
         canvas.restoreState()
 
-    frame = Frame(1.5*cm, 1.3*cm, W - 3*cm, H - 3.2*cm, id="main")
+    # Frame de contenu : marges symétriques 1.5cm, top à 1.3cm sous l'en-tête
+    # mince et bottom à 1.3cm au-dessus du footer fin.
+    frame = Frame(1.5*cm, 1.3*cm, W - 3*cm, H - 2.6*cm, id="main")
     template = PageTemplate(id="main", frames=[frame], onPage=on_page)
-    doc = BaseDocTemplate(buffer, pagesize=A4, pageTemplates=[template])
+    # allowSplitting=1 : un long Paragraph peut se couper proprement entre 2 pages
+    # splitLongParagraphs=True : autorise la coupe interne d'un paragraphe trop grand
+    #                           pour la page restante (sinon il pousse une page presque vide)
+    doc = BaseDocTemplate(
+        buffer, pagesize=A4, pageTemplates=[template],
+        allowSplitting=1,
+        title=title,
+    )
+    doc.splitLongParagraphs = True
     return doc
 
 
 # ── Style helpers ─────────────────────────────────────────────────────────────
+# widows / orphans = 2 : ReportLab refusera de laisser une seule ligne en bas/haut
+#   de page → un paragraphe de 3 lignes ne se coupera pas en 1+2 mais basculera
+#   entièrement sur la page suivante (ou se coupera en 2+2 si plus long).
+# keepWithNext = 1 sur les titres (bold, code_title, label) : le titre ne reste
+#   jamais isolé en bas de page — il bascule avec le flowable qui suit.
 def _styles():
     base = getSampleStyleSheet()
     return {
@@ -113,19 +192,25 @@ def _styles():
             alignment=TA_CENTER, spaceAfter=0),
         "section": ParagraphStyle("SEC", parent=base["Normal"],
             fontSize=11, fontName="Helvetica-Bold",
-            textColor=C_WHITE, spaceAfter=0, spaceBefore=0, leftIndent=8),
+            textColor=C_WHITE, spaceAfter=0, spaceBefore=0, leftIndent=8,
+            keepWithNext=1),
         "body": ParagraphStyle("BODY", parent=base["Normal"],
-            fontSize=10, textColor=C_TEXT, spaceAfter=3, leading=16),
+            fontSize=10, textColor=C_TEXT, spaceAfter=3, leading=16,
+            allowWidows=0, allowOrphans=0),
         "body_sm": ParagraphStyle("BSM", parent=base["Normal"],
-            fontSize=9, textColor=C_MUTED, spaceAfter=2, leading=14),
+            fontSize=9, textColor=C_MUTED, spaceAfter=2, leading=14,
+            allowWidows=0, allowOrphans=0),
         "bold": ParagraphStyle("BLD", parent=base["Normal"],
-            fontSize=10, fontName="Helvetica-Bold", textColor=C_TEXT, spaceAfter=3),
+            fontSize=10, fontName="Helvetica-Bold", textColor=C_TEXT, spaceAfter=3,
+            keepWithNext=1),
         "code_title": ParagraphStyle("CT", parent=base["Normal"],
-            fontSize=12, fontName="Helvetica-Bold", textColor=C_TEXT, spaceAfter=4),
+            fontSize=12, fontName="Helvetica-Bold", textColor=C_TEXT, spaceAfter=4,
+            keepWithNext=1),
         "footer": ParagraphStyle("FTR", parent=base["Normal"],
             fontSize=8, textColor=C_MUTED, alignment=TA_CENTER),
         "label": ParagraphStyle("LBL", parent=base["Normal"],
-            fontSize=9, fontName="Helvetica-Bold", textColor=C_MUTED, spaceAfter=1),
+            fontSize=9, fontName="Helvetica-Bold", textColor=C_MUTED, spaceAfter=1,
+            keepWithNext=1),
         "value": ParagraphStyle("VAL", parent=base["Normal"],
             fontSize=10, textColor=C_TEXT, spaceAfter=0),
         "chip_style": ParagraphStyle("CHIP", parent=base["Normal"],
@@ -134,30 +219,50 @@ def _styles():
     }
 
 
-def _section_header(title, color=None, text_color=C_WHITE):
-    if color is None:
-        color = C_FOREST
+def _section_header(title, color=None, text_color=None):
+    """Titre de section : barre verticale terracotta + label uppercase letter-spacé.
+    Plus de fond plein vert — on reste sur cream pour cohérence avec le frontend.
+    Les paramètres `color` / `text_color` sont conservés pour compat mais ignorés."""
     base = getSampleStyleSheet()
+    # Letter-spacing simulé via espaces fines insérées entre les mots/lettres
+    # (Helvetica n'a pas de feature CSS letter-spacing native)
+    label_style = ParagraphStyle(
+        "SH", parent=base["Normal"],
+        fontSize=10.5, fontName="Helvetica-Bold",
+        textColor=C_TEXT, spaceAfter=0, spaceBefore=0,
+        leading=14,
+    )
     t = Table([[
         Paragraph("", ParagraphStyle("spacer", parent=base["Normal"])),
-        Paragraph(title, ParagraphStyle(
-            "SH", parent=base["Normal"],
-            fontSize=11, fontName="Helvetica-Bold",
-            textColor=text_color, spaceAfter=0, spaceBefore=0,
-        )),
-    ]], colWidths=[0.4*cm, CONTENT_W - 0.4*cm])
+        Paragraph(title.upper(), label_style),
+    ]], colWidths=[0.18*cm, CONTENT_W - 0.18*cm])
     t.setStyle(TableStyle([
-        ("BACKGROUND",    (0, 0), (-1, -1), color),
-        ("BACKGROUND",    (0, 0), (0, -1),  C_ACCENT),   # accent stripe gauche
+        # Barre terracotta verticale à gauche (3px) — seule décoration
+        ("BACKGROUND",    (0, 0), (0, -1),  C_ACCENT),
         ("LEFTPADDING",   (0, 0), (0, -1),  0),
         ("RIGHTPADDING",  (0, 0), (0, -1),  0),
         ("LEFTPADDING",   (1, 0), (1, -1),  10),
         ("RIGHTPADDING",  (1, 0), (1, -1),  10),
-        ("TOPPADDING",    (0, 0), (-1, -1), 8),
+        ("TOPPADDING",    (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LINEBELOW",     (0, 0), (-1, -1), 1.5, C_ACCENT),
+        # Trait fin sous le titre pour aérer
+        ("LINEBELOW",     (0, 0), (-1, -1), 0.5, C_BORDER),
     ]))
+    # Empêche le titre de section de rester isolé en bas de page.
+    t.keepWithNext = 1
     return t
+
+
+def _keep(*flowables):
+    """Wrapper KeepTogether tolérant : retourne le flowable seul si 1, sinon
+    KeepTogether de la liste. Utilisé pour grouper header + petite table de
+    contenu afin d'empêcher la coupe au milieu d'une sous-section."""
+    flat = [f for f in flowables if f is not None]
+    if not flat:
+        return None
+    if len(flat) == 1:
+        return flat[0]
+    return KeepTogether(flat)
 
 
 def _info_table(rows):
@@ -186,26 +291,29 @@ def _info_table(rows):
 
 
 def _status_badge(statut):
+    """Bandeau verdict global : pastille couleur + label uppercase.
+    Pas d'emoji — le code couleur de fond + bordure latérale suffit."""
     cfg = {
-        "URGENT":       ("🔴  INTERVENTION URGENTE",  C_URGENT_BG, C_URGENT,  C_URGENT_HDR),
-        "SURVEILLER":   ("🟡  À SURVEILLER",           C_WARN_BG,   C_WARN,    C_WARN_HDR),
-        "À SURVEILLER": ("🟡  À SURVEILLER",           C_WARN_BG,   C_WARN,    C_WARN_HDR),
-        "OK":           ("🟢  VÉHICULE EN BON ÉTAT",   C_OK_BG,     C_OK,      C_OK_HDR),
+        "URGENT":       ("INTERVENTION URGENTE",   C_URGENT_BG, C_URGENT,  C_URGENT_HDR),
+        "SURVEILLER":   ("À SURVEILLER",            C_WARN_BG,   C_WARN,    C_WARN_HDR),
+        "À SURVEILLER": ("À SURVEILLER",            C_WARN_BG,   C_WARN,    C_WARN_HDR),
+        "OK":           ("VÉHICULE EN BON ÉTAT",    C_OK_BG,     C_OK,      C_OK_HDR),
     }
     txt, bg, fg, border = cfg.get(statut, cfg["OK"])
     t = Table([[Paragraph(txt, ParagraphStyle(
         "SB", parent=getSampleStyleSheet()["Normal"],
-        fontSize=15, fontName="Helvetica-Bold",
+        fontSize=14, fontName="Helvetica-Bold",
         textColor=fg, alignment=TA_CENTER, spaceAfter=0,
     ))]], colWidths=[CONTENT_W])
     t.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, -1), bg),
         ("TOPPADDING",    (0, 0), (-1, -1), 14),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
-        ("LINEABOVE",     (0, 0), (-1,  0), 3, border),
-        ("LINEBELOW",     (0, 0), (-1, -1), 3, border),
-        ("LINEBEFORE",    (0, 0), (0,  -1), 3, border),
-        ("LINEAFTER",     (0, 0), (-1, -1), 3, border),
+        # Barre latérale gauche colorée : signal visuel discret
+        ("LINEBEFORE",    (0, 0), (0,  -1), 4, border),
+        # Trait fin haut + bas pour cadrer (pas de full-border épais)
+        ("LINEABOVE",     (0, 0), (-1,  0), 0.5, border),
+        ("LINEBELOW",     (0, 0), (-1, -1), 0.5, border),
     ]))
     return t
 
@@ -269,8 +377,8 @@ def _dtc_chips(codes: list) -> Table | None:
         return None
     base = getSampleStyleSheet()
     chip_style = ParagraphStyle("CHIP", parent=base["Normal"],
-        fontSize=9, fontName="Helvetica-Bold",
-        textColor=C_FOREST, alignment=TA_CENTER, spaceAfter=0)
+        fontSize=9.5, fontName="Courier-Bold",
+        textColor=C_ACCENT, alignment=TA_CENTER, spaceAfter=0)
 
     per_row  = 6
     chip_w   = CONTENT_W / per_row
@@ -289,10 +397,11 @@ def _dtc_chips(codes: list) -> Table | None:
 
     t = Table(all_rows, colWidths=[chip_w] * per_row)
     style = [
+        # Chips terracotta sur fond cream — codes monospace pour lisibilité
         ("GRID",          (0, 0), (-1, -1), 0.5, C_BORDER),
-        ("BACKGROUND",    (0, 0), (-1, -1), C_LABEL_BG),
-        ("TOPPADDING",    (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("BACKGROUND",    (0, 0), (-1, -1), C_LIGHT),
+        ("TOPPADDING",    (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
         ("LEFTPADDING",   (0, 0), (-1, -1), 4),
         ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
         ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
@@ -307,17 +416,19 @@ def _fmt_causes(causes) -> str:
     if not causes:
         return ""
     parts = []
+    # Niveau de cause : pastille texte colorée via <font>, pas d'emoji
+    niveau_color = {"ROUGE": _HX_URGENT, "ORANGE": _HX_WARN, "JAUNE": _HX_WARN}
     for c in causes:
         if isinstance(c, dict):
             cause_txt = c.get("cause", "")
             score = c.get("score")
             niveau = c.get("niveau", "")
-            niveau_map = {"ROUGE": "🔴", "ORANGE": "🟠", "JAUNE": "🟡"}
-            emoji = niveau_map.get(niveau, "•")
+            color = niveau_color.get(niveau)
+            bullet = f"<font color='{color}'>■</font>" if color else "•"
             if score is not None:
-                parts.append(f"{emoji} {cause_txt} ({score}%)")
+                parts.append(f"{bullet} {cause_txt} ({score}%)")
             else:
-                parts.append(f"{emoji} {cause_txt}")
+                parts.append(f"{bullet} {cause_txt}")
         else:
             parts.append(f"• {str(c)}")
     return "   ".join(parts)
@@ -337,9 +448,8 @@ def _dtc_card(analysis):
         "À SURVEILLER": (C_WARN_HDR,   C_WARN_BG,   _HX_WARN),
         "NON URGENT":   (C_OK_HDR,     C_OK_BG,     _HX_OK),
     }
-    hdr_color, body_bg, hdr_hex = color_map.get(niveau, (C_GREEN, C_LIGHT, "#2d5a2d"))
-    emoji_map = {"URGENT": "🔴", "SURVEILLER": "🟡", "À SURVEILLER": "🟡", "NON URGENT": "🟢"}
-    emoji = emoji_map.get(niveau, "⚪")
+    hdr_color, body_bg, hdr_hex = color_map.get(niveau, (C_GREEN, C_LIGHT, "#3d5a4e"))
+    # Plus d'emoji — la couleur du header (rouge/orange/vert) suffit comme code visuel
 
     # ── Header row ──
     hdr_style = ParagraphStyle("CH", parent=base["Normal"],
@@ -350,8 +460,8 @@ def _dtc_card(analysis):
         alignment=TA_RIGHT, spaceAfter=0)
 
     hdr_table = Table([[
-        Paragraph(f"{emoji}  Code <b>{code}</b>", hdr_style),
-        Paragraph(niveau, niv_style),
+        Paragraph(f"Code <b>{_xml_escape(_safe_str(code))}</b>", hdr_style),
+        Paragraph(_xml_escape(_safe_str(niveau)), niv_style),
     ]], colWidths=[11*cm, CONTENT_W - 11*cm])
     hdr_table.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, -1), hdr_color),
@@ -370,8 +480,10 @@ def _dtc_card(analysis):
         fontSize=8.5, textColor=C_MUTED, leading=13, spaceAfter=0)
 
     def _brow(label, txt, sm=False):
+        # txt peut venir de l'IA → XML-escape pour éviter crash ReportLab sur &/</>
+        safe_txt = _xml_escape(_safe_str(txt, "—"))
         body_rows.append([Paragraph(
-            f"<font color='{_HX_MUTED}'><b>{label} :</b></font>  {txt}",
+            f"<font color='{_HX_MUTED}'><b>{_xml_escape(label)} :</b></font>  {safe_txt}",
             body_sm_p if sm else body_style_p
         )])
 
@@ -401,14 +513,14 @@ def _dtc_card(analysis):
     if analysis.get("fourchette_prix"):
         _brow("Estimation", analysis["fourchette_prix"], sm=True)
     if analysis.get("defaut_constructeur_connu") and analysis.get("detail_defaut_constructeur"):
-        _brow("🔧 Défaut constructeur", analysis["detail_defaut_constructeur"], sm=True)
+        _brow("Défaut constructeur", analysis["detail_defaut_constructeur"], sm=True)
     if analysis.get("rappel_constructeur") and analysis.get("detail_rappel"):
-        _brow("📢 Rappel constructeur", analysis["detail_rappel"], sm=True)
+        _brow("Rappel constructeur", analysis["detail_rappel"], sm=True)
 
     fp = analysis.get("faux_positif_probable") or (analysis.get("faux_positif") or {}).get("probable", False)
     fp_r = analysis.get("raison_faux_positif") or (analysis.get("faux_positif") or {}).get("explication", "")
     if fp:
-        _brow("⚠️ Faux positif possible", fp_r, sm=True)
+        _brow("Faux positif possible", fp_r, sm=True)
 
     if body_rows:
         body_t = Table(body_rows, colWidths=[CONTENT_W])
@@ -429,65 +541,6 @@ def _dtc_card(analysis):
         return hdr_table
 
 
-def _plan_action_table(plan_action: list) -> Table | None:
-    """Tableau du plan d'action avec fond de ligne coloré par priorité."""
-    if not plan_action:
-        return None
-    base = getSampleStyleSheet()
-    hdr_p = ParagraphStyle("PAH", parent=base["Normal"],
-        fontSize=9, fontName="Helvetica-Bold",
-        textColor=C_WHITE, spaceAfter=0)
-    cell_p = ParagraphStyle("PAC", parent=base["Normal"],
-        fontSize=9, textColor=C_TEXT, leading=14, spaceAfter=0)
-    prio_p_map = {
-        "URGENT":       ParagraphStyle("PU", parent=base["Normal"], fontSize=9,
-                            fontName="Helvetica-Bold", textColor=C_URGENT, spaceAfter=0),
-        "IMPORTANT":    ParagraphStyle("PI", parent=base["Normal"], fontSize=9,
-                            fontName="Helvetica-Bold", textColor=C_WARN, spaceAfter=0),
-        "SI NÉCESSAIRE":ParagraphStyle("PS", parent=base["Normal"], fontSize=9,
-                            fontName="Helvetica-Bold", textColor=C_OK, spaceAfter=0),
-    }
-    prio_bg_map = {
-        "URGENT":        colors.HexColor("#fff5f5"),
-        "IMPORTANT":     colors.HexColor("#fffbf2"),
-        "SI NÉCESSAIRE": colors.HexColor("#f5fff5"),
-    }
-
-    headers = ["#", "Action", "Durée", "Coût", "Priorité"]
-    col_w   = [1*cm, 8*cm, 2.5*cm, 3*cm, 2.5*cm]
-    rows    = [[Paragraph(h, hdr_p) for h in headers]]
-    bg_styles = []
-
-    for idx, step in enumerate(plan_action[:8], start=1):
-        prio = step.get("priorite", "")
-        p_style = prio_p_map.get(prio, ParagraphStyle("PD", parent=base["Normal"],
-            fontSize=9, textColor=C_MUTED, spaceAfter=0))
-        rows.append([
-            Paragraph(str(step.get("etape", idx)), cell_p),
-            Paragraph(step.get("action", ""), cell_p),
-            Paragraph(step.get("duree_estimee", "—"), cell_p),
-            Paragraph(step.get("cout_estime", "—"), cell_p),
-            Paragraph(prio, p_style),
-        ])
-        row_i = len(rows) - 1
-        bg = prio_bg_map.get(prio, C_LIGHT)
-        bg_styles.append(("BACKGROUND", (0, row_i), (-1, row_i), bg))
-
-    t = Table(rows, colWidths=col_w)
-    style = [
-        ("BACKGROUND",    (0, 0), (-1, 0), C_FOREST),
-        ("GRID",          (0, 0), (-1, -1), 0.5, C_BORDER),
-        ("TOPPADDING",    (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
-        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-        ("LINEBELOW",     (0, 0), (-1, 0), 1.5, C_ACCENT),
-    ] + bg_styles
-    t.setStyle(TableStyle(style))
-    return t
-
-
 def _garage_footer_block(garage: dict, s) -> list:
     """Retourne une liste de flowables affichant l'identité du garage en pied de document."""
     if not garage:
@@ -503,8 +556,8 @@ def _garage_footer_block(garage: dict, s) -> list:
     parts = []
     if nom:     parts.append(f"<b>{nom}</b>")
     if adresse: parts.append(adresse)
-    if tel:     parts.append(f"☎ {tel}")
-    if email:   parts.append(f"✉ {email}")
+    if tel:     parts.append(f"Tél : {tel}")
+    if email:   parts.append(email)
     if siret:   parts.append(f"SIRET : {siret}")
 
     base = getSampleStyleSheet()
@@ -525,58 +578,88 @@ def _garage_footer_block(garage: dict, s) -> list:
 
 
 def _main_header(title, subtitle, s):
+    """En-tête principal : éditorial sobre, sans bandeau noir massif.
+    - Over-line `RODIA · ...` en terracotta uppercase letter-spaced
+    - Titre H1 (gros, vert encre, weight bold)
+    - Sous-titre sur la même ligne hiérarchique, séparé par un trait fin
+    """
     base = getSampleStyleSheet()
-    sep_style = ParagraphStyle("SEP", parent=base["Normal"],
-        fontSize=9, textColor=C_ACCENT, alignment=TA_CENTER, spaceAfter=0)
+    overline_style = ParagraphStyle("OVR", parent=base["Normal"],
+        fontSize=8, fontName="Helvetica-Bold", textColor=C_ACCENT,
+        alignment=TA_LEFT, spaceAfter=0, spaceBefore=0,
+        # letter spacing simulé via espaces typographiques
+    )
+    title_style = ParagraphStyle("TTL", parent=base["Normal"],
+        fontSize=22, fontName="Helvetica-Bold",
+        textColor=C_TEXT, alignment=TA_LEFT, spaceAfter=0, leading=26)
+    sub_style = ParagraphStyle("STB", parent=base["Normal"],
+        fontSize=10, textColor=C_MUTED, alignment=TA_LEFT,
+        spaceAfter=0, spaceBefore=0, leading=14)
+
+    # "RODIA  ·  RAPPORT DIAGNOSTIC"  → letter-spacing simulé via espaces
+    overline_text = "R O D I A  ·  by  L Y V E N I A"
+
     rows = [
-        [Paragraph(title, s["main_title"])],
-        [Paragraph("─ ─ ─", sep_style)],
-        [Paragraph(subtitle, s["main_sub"])],
+        [Paragraph(overline_text, overline_style)],
+        [Paragraph(title, title_style)],
+        [Paragraph(subtitle, sub_style)],
     ]
     t = Table(rows, colWidths=[CONTENT_W])
     t.setStyle(TableStyle([
-        ("BACKGROUND",    (0, 0), (-1, -1), C_DARK),
-        ("TOPPADDING",    (0, 0), (0, 0),   22),
-        ("BOTTOMPADDING", (0, -1), (-1, -1), 18),
-        ("TOPPADDING",    (0, 1), (-1, 1),  4),
-        ("BOTTOMPADDING", (0, 1), (-1, 1),  4),
+        # Pas de fond sombre — on reste sur le cream du document
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (-1, 0),  0),    # overline collé en haut
+        ("BOTTOMPADDING", (0, 0), (-1, 0),  4),
+        ("TOPPADDING",    (0, 1), (-1, 1),  0),
+        ("BOTTOMPADDING", (0, 1), (-1, 1),  6),
         ("TOPPADDING",    (0, 2), (-1, 2),  0),
-        ("LINEABOVE",     (0, 0), (-1, 0),  4, C_ACCENT),
-        ("LINEBELOW",     (0, -1), (-1, -1), 4, C_ACCENT),
+        ("BOTTOMPADDING", (0, 2), (-1, 2), 14),
+        # Trait terracotta en dessous = signature visuelle de la marque
+        ("LINEBELOW",     (0, -1), (-1, -1), 1.5, C_ACCENT),
     ]))
     return t
 
 
 # ── DIAGNOSTIC PDF ────────────────────────────────────────────────────────────
 def export_diagnostic_pdf(vehicle: dict, diagnostic: dict, garage: dict = None) -> bytes:
+    _log("export_diagnostic_pdf START")
+    # Garanties d'entrée : on ne laisse JAMAIS None arriver à ReportLab.
+    vehicle    = _safe_dict(vehicle)
+    diagnostic = _safe_dict(diagnostic)
     buffer = io.BytesIO()
-    vin          = vehicle.get("vin", "N/A")
-    marque       = vehicle.get("marque", "")
-    modele       = vehicle.get("modele", "")
-    annee        = vehicle.get("annee", "")
-    code_label   = vehicle.get("code", "")
-    surnom       = vehicle.get("surnom", "")
+    vin          = _safe_str(vehicle.get("vin"), "N/A")
+    marque       = _safe_str(vehicle.get("marque"))
+    modele       = _safe_str(vehicle.get("modele"))
+    annee        = _safe_str(vehicle.get("annee"))
+    code_label   = _safe_str(vehicle.get("code"))
+    surnom       = _safe_str(vehicle.get("surnom"))
     vehicle_label = surnom or f"{marque} {modele} {annee}".strip() or vin
     if code_label:
         vehicle_label = f"[{code_label}] {vehicle_label}"
 
-    doc = _make_doc(buffer, title=f"Rapport — {vehicle_label}")
+    # Détection mode : "panne" (défaut) ou "controle" → titre / sections adaptés
+    diag_type = _safe_str(diagnostic.get("type"), "panne") or "panne"
+    is_bilan  = (diag_type == "controle")
+    main_title = "Bilan de santé véhicule" if is_bilan else "Rapport de diagnostic"
+    pdf_doc_title = f"Bilan — {vehicle_label}" if is_bilan else f"Rapport — {vehicle_label}"
+
+    doc = _make_doc(buffer, title=pdf_doc_title)
     s   = _styles()
     story = []
+    _log(f"header build (vin={vin}) mode={diag_type}")
 
     # ── HEADER BANNER ──
-    story.append(_main_header("RAPPORT DE DIAGNOSTIC OBD2",
-                              f"{vehicle_label} — {datetime.now().strftime('%d/%m/%Y')}", s))
+    story.append(_main_header(main_title,
+                              f"{vehicle_label}  ·  {datetime.now().strftime('%d/%m/%Y')}", s))
     story.append(Spacer(1, 0.5*cm))
 
     # ── VEHICLE INFO ──
-    story.append(_section_header("🚗  INFORMATIONS VÉHICULE"))
-    story.append(Spacer(1, 0.2*cm))
-    analyse_ia = diagnostic.get("analyse_ia", {})
-    if isinstance(analyse_ia, str):
-        analyse_ia = {}
-    vin_info     = analyse_ia.get("vin_info", {}) if isinstance(analyse_ia, dict) else {}
-    motorisation = (vehicle.get("motorisation") or vin_info.get("motorisation", ""))
+    # Bloc compact (header + petite table) → KeepTogether pour ne jamais couper
+    # entre le titre et la première ligne d'info véhicule.
+    analyse_ia = _safe_dict(diagnostic.get("analyse_ia"))
+    vin_info     = _safe_dict(analyse_ia.get("vin_info"))
+    motorisation = _safe_str(vehicle.get("motorisation") or vin_info.get("motorisation", ""))
     vehicle_rows = [
         ["VIN",      vin],
         ["Marque",   vehicle.get("marque") or vin_info.get("marque", "N/A")],
@@ -592,21 +675,24 @@ def export_diagnostic_pdf(vehicle: dict, diagnostic: dict, garage: dict = None) 
     ]
     if diagnostic.get("technicien"):
         vehicle_rows.append(["Technicien", diagnostic["technicien"]])
-    story.append(_info_table(vehicle_rows))
+    story.append(_keep(
+        _section_header("Informations véhicule"),
+        Spacer(1, 0.2*cm),
+        _info_table(vehicle_rows),
+    ))
     story.append(Spacer(1, 0.4*cm))
 
     # ── REALTIME DATA ──
-    rt = diagnostic.get("donnees_temps_reel", {})
+    _log("section realtime")
+    rt = _safe_dict(diagnostic.get("donnees_temps_reel"))
     if rt:
         engine_running = rt.get("engine_running")
         engine_ctx = (
-            "⚠️  Moteur éteint au moment du diagnostic"
+            "Moteur éteint au moment du diagnostic"
             if engine_running is False else
-            "✅  Moteur tournant au diagnostic"
+            "Moteur tournant au diagnostic"
             if engine_running is True else None
         )
-        story.append(_section_header("📊  DONNÉES TEMPS RÉEL"))
-        story.append(Spacer(1, 0.2*cm))
         rt_rows = [
             ["Vitesse",          f"{rt.get('speed', 'N/A')} km/h"],
             ["Régime moteur",    f"{rt.get('rpm', 'N/A')} tr/min"],
@@ -616,21 +702,30 @@ def export_diagnostic_pdf(vehicle: dict, diagnostic: dict, garage: dict = None) 
         ]
         if engine_ctx:
             rt_rows.insert(0, ["État moteur", engine_ctx])
-        story.append(_info_table(rt_rows))
+        story.append(_keep(
+            _section_header("Données temps réel"),
+            Spacer(1, 0.2*cm),
+            _info_table(rt_rows),
+        ))
         story.append(Spacer(1, 0.4*cm))
 
     # ── DTC CODES ──
-    dtc_codes = diagnostic.get("dtc_codes", [])
-    story.append(_section_header("⚠️  CODES DE DÉFAUT"))
-    story.append(Spacer(1, 0.2*cm))
+    _log("section dtc")
+    dtc_codes = _safe_list(diagnostic.get("dtc_codes"))
     if dtc_codes:
         chips = _dtc_chips(dtc_codes)
-        if chips:
-            story.append(chips)
+        story.append(_keep(
+            _section_header("Codes de défaut"),
+            Spacer(1, 0.2*cm),
+            chips,
+        ))
     else:
-        t = Table([[Paragraph("✅  Aucun code de défaut — véhicule en bon état.", ParagraphStyle(
-            "OK", parent=getSampleStyleSheet()["Normal"],
-            fontSize=10, textColor=C_OK, spaceAfter=0))]],
+        t = Table([[Paragraph(
+            "Aucun code de défaut détecté — véhicule en bon état.",
+            ParagraphStyle(
+                "OK", parent=getSampleStyleSheet()["Normal"],
+                fontSize=10, fontName="Helvetica-Bold",
+                textColor=C_OK, spaceAfter=0))]],
             colWidths=[CONTENT_W])
         t.setStyle(TableStyle([
             ("BACKGROUND",    (0, 0), (-1, -1), C_OK_BG),
@@ -639,211 +734,301 @@ def export_diagnostic_pdf(vehicle: dict, diagnostic: dict, garage: dict = None) 
             ("LEFTPADDING",   (0, 0), (-1, -1), 16),
             ("BOX",           (0, 0), (-1, -1), 1.5, C_OK_HDR),
         ]))
-        story.append(t)
+        story.append(_keep(
+            _section_header("Codes de défaut"),
+            Spacer(1, 0.2*cm),
+            t,
+        ))
     story.append(Spacer(1, 0.4*cm))
 
     # ── AI ANALYSIS ──
-    story.append(_section_header("🤖  ANALYSE INTELLIGENCE ARTIFICIELLE"))
-    story.append(Spacer(1, 0.3*cm))
-
-    statut = analyse_ia.get("statut_global", "OK") if isinstance(analyse_ia, dict) else "OK"
-    story.append(_status_badge(statut))
-    story.append(Spacer(1, 0.25*cm))
-
-    # Confiance diagnostic
-    confidence = analyse_ia.get("diagnostic_confidence") if isinstance(analyse_ia, dict) else None
+    # Le bloc d'identité IA (header + badge statut + barre confiance) doit
+    # rester groupé : couper entre le header et le badge ferait moche.
+    _log("section AI")
+    statut = _safe_str(analyse_ia.get("statut_global"), "OK") or "OK"
+    ai_section_label = "Bilan de santé" if is_bilan else "Analyse IA"
+    ia_intro = [
+        _section_header(ai_section_label),
+        Spacer(1, 0.3*cm),
+        _status_badge(statut),
+        Spacer(1, 0.25*cm),
+    ]
+    confidence = analyse_ia.get("diagnostic_confidence")
     if confidence is not None:
-        badge = _confidence_badge(int(confidence))
-        if badge:
-            story.append(badge)
-            story.append(Spacer(1, 0.2*cm))
+        try:
+            badge = _confidence_badge(max(0, min(100, int(confidence))))
+            if badge:
+                ia_intro.append(badge)
+                ia_intro.append(Spacer(1, 0.2*cm))
+        except (ValueError, TypeError):
+            pass
+    story.append(KeepTogether(ia_intro))
 
-    # Résumé global
-    resume = ""
-    if isinstance(analyse_ia, dict):
-        resume = analyse_ia.get("resume", "") or analyse_ia.get("analyse_globale", "")
-    if resume:
-        t = Table([[Paragraph(resume, ParagraphStyle(
-            "RES", parent=getSampleStyleSheet()["Normal"],
-            fontSize=10, textColor=C_TEXT, leading=16, spaceAfter=0))]],
-            colWidths=[CONTENT_W])
-        t.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, -1), colors.HexColor("#f0f7f0")),
-            ("TOPPADDING",    (0, 0), (-1, -1), 12),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 16),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 12),
-            ("LINEBEFORE",    (0, 0), (0, -1), 4, C_ACCENT),
-            ("BOX",           (0, 0), (-1, -1), 0.5, C_BORDER),
-        ]))
-        story.append(t)
-        story.append(Spacer(1, 0.3*cm))
+    # Résumé global (contenu IA → XML-échappé pour éviter crash ReportLab sur &, <, >)
+    try:
+        resume = _safe_str(analyse_ia.get("resume") or analyse_ia.get("analyse_globale"))
+        _log(f"AI resume len={len(resume)}")
+        if resume:
+            resume_style = ParagraphStyle("RES", parent=getSampleStyleSheet()["Normal"],
+                fontSize=10, textColor=C_TEXT, leading=16, spaceAfter=0)
+            t = Table([[_safe_para_escaped(resume, resume_style)]], colWidths=[CONTENT_W])
+            t.setStyle(TableStyle([
+                ("BACKGROUND",    (0, 0), (-1, -1), colors.HexColor("#f0f7f0")),
+                ("TOPPADDING",    (0, 0), (-1, -1), 12),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+                ("LEFTPADDING",   (0, 0), (-1, -1), 16),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 12),
+                ("LINEBEFORE",    (0, 0), (0, -1), 4, C_ACCENT),
+                ("BOX",           (0, 0), (-1, -1), 0.5, C_BORDER),
+            ]))
+            story.append(t)
+            story.append(Spacer(1, 0.3*cm))
+        _log("section AI resume OK")
+    except Exception as exc:
+        import traceback as _tb_loc
+        _log(f"✗ AI resume a échoué : {exc}\n{_tb_loc.format_exc()}")
 
-    # Root cause analysis
-    root_cause = analyse_ia.get("root_cause_analysis", "") if isinstance(analyse_ia, dict) else ""
-    if root_cause:
-        story.append(Paragraph("<b>🔍 Analyse causale :</b>", s["bold"]))
-        story.append(Paragraph(root_cause, s["body"]))
-        story.append(Spacer(1, 0.3*cm))
+    # Root cause analysis (contenu IA → échappé)
+    try:
+        root_cause = _safe_str(analyse_ia.get("root_cause_analysis"))
+        _log(f"AI root_cause len={len(root_cause)}")
+        if root_cause:
+            story.append(Paragraph("<b>Analyse causale :</b>", s["bold"]))
+            story.append(_safe_para_escaped(root_cause, s["body"]))
+            story.append(Spacer(1, 0.3*cm))
+        _log("section AI root_cause OK")
+    except Exception as exc:
+        import traceback as _tb_loc
+        _log(f"✗ AI root_cause a échoué : {exc}\n{_tb_loc.format_exc()}")
 
     # Per-DTC cards
-    analyse_data = analyse_ia.get("analyse", []) if isinstance(analyse_ia, dict) else []
-    if isinstance(analyse_data, str):
-        clean = analyse_data.replace("**", "").replace("##", "").replace("#", "")
+    _log("section dtc_cards")
+    analyse_data_raw = analyse_ia.get("analyse")
+    if isinstance(analyse_data_raw, str):
+        clean = analyse_data_raw.replace("**", "").replace("##", "").replace("#", "")
         for line in clean.split("\n"):
             line = line.strip()
             if line:
-                story.append(Paragraph(line, s["body"]))
+                story.append(_safe_para_escaped(line, s["body"]))
         story.append(Spacer(1, 0.3*cm))
         analyse_data = []
+    else:
+        analyse_data = _safe_list(analyse_data_raw)
 
     if analyse_data:
         story.append(Paragraph("Détail par code :", s["bold"]))
         story.append(Spacer(1, 0.2*cm))
-        for analysis in analyse_data:
-            story.append(_dtc_card(analysis))
-            story.append(Spacer(1, 0.3*cm))
+        for i, analysis in enumerate(analyse_data):
+            if not isinstance(analysis, dict):
+                continue  # skip entrée corrompue au lieu de crasher
+            try:
+                story.append(_dtc_card(analysis))
+                story.append(Spacer(1, 0.3*cm))
+            except Exception as exc:
+                _log(f"✗ _dtc_card #{i} a échoué : {exc} — fallback texte")
+                story.append(_safe_para(f"[Code {_safe_str(analysis.get('code'), '?')} — erreur d'affichage]", s["body"]))
 
-    # ── PLAN D'ACTION ──
-    plan_action = analyse_ia.get("plan_action", []) if isinstance(analyse_ia, dict) else []
+    # ── PLAN D'ACTION (version texte simple, sans Table complexe) ──
+    # Chaque étape (titre prio + action + méta durée/coût) regroupée dans un
+    # KeepTogether pour ne jamais couper une étape au milieu.
+    _log("section plan_action")
+    plan_action = _safe_list(analyse_ia.get("plan_action"))
+    _log(f"plan_action: {len(plan_action)} étapes")
     if plan_action:
-        story.append(_section_header("🛠️  PLAN D'ACTION"))
-        story.append(Spacer(1, 0.2*cm))
-        plan_t = _plan_action_table(plan_action)
-        if plan_t:
-            story.append(plan_t)
-        story.append(Spacer(1, 0.4*cm))
+        try:
+            plan_section_label = "Maintenance recommandée" if is_bilan else "Plan d'action"
+            story.append(_keep(
+                _section_header(plan_section_label),
+                Spacer(1, 0.2*cm),
+            ))
+            # Couleur du marqueur de priorité (pastille ■ + label coloré)
+            prio_color = {
+                "URGENT":    _HX_URGENT,
+                "IMPORTANT": _HX_WARN,
+            }
+            for _i, _step in enumerate(plan_action[:8], start=1):
+                _s = _safe_dict(_step)
+                _prio  = _xml_escape(_safe_str(_s.get("priorite"))[:30])
+                _etape = _xml_escape(_safe_str(_s.get("etape"), str(_i))[:30])
+                _act   = _xml_escape(_safe_str(_s.get("action"))[:500])
+                _cout  = _xml_escape(_safe_str(_s.get("cout_estime"), "?")[:50])
+                _dur   = _xml_escape(_safe_str(_s.get("duree_estimee"), "?")[:50])
+                _color = prio_color.get(_prio, _HX_OK)
+                _log(f"  plan step #{_i} prio={_prio!r} act_len={len(_act)} OK")
+                try:
+                    step_block = [
+                        Paragraph(
+                            f"<font color='{_color}'>■</font>  "
+                            f"<b>Étape {_etape}</b>  "
+                            f"<font color='{_color}' size='8'><b>{_prio}</b></font>",
+                            s["bold"]
+                        ),
+                        Paragraph(_act, s["body"]),
+                        Paragraph(
+                            f"<font color='{_HX_MUTED}'>Durée : {_dur}  ·  Coût : {_cout}</font>",
+                            s["body_sm"]
+                        ),
+                        Spacer(1, 0.2*cm),
+                    ]
+                    story.append(KeepTogether(step_block))
+                except Exception as _e:
+                    _log(f"  ✗ plan step #{_i} ignoré : {_e}")
+            story.append(Spacer(1, 0.2*cm))
+            _log("section plan_action OK")
+        except Exception as exc:
+            import traceback as _tb_loc
+            _log(f"✗ plan_action section a échoué : {exc}\n{_tb_loc.format_exc()}")
 
     # ── SESSION RALENTI ──
-    session_ralenti = diagnostic.get("session_ralenti") or (
-        analyse_ia.get("session_ralenti") if isinstance(analyse_ia, dict) else None
+    # Header + tableau de stats regroupés (bloc compact). Les anomalies suivent
+    # en flowables séparés pour pouvoir couler si trop nombreuses.
+    _log("section ralenti")
+    session_ralenti = _safe_dict(
+        diagnostic.get("session_ralenti") or analyse_ia.get("session_ralenti")
     )
-    if session_ralenti and isinstance(session_ralenti, dict) and session_ralenti.get("readings_count", 0) > 0:
-        story.append(_section_header("🅿️  DONNÉES AU RALENTI"))
-        story.append(Spacer(1, 0.2*cm))
-        stats = session_ralenti.get("stats", {})
+    if session_ralenti and session_ralenti.get("readings_count", 0) > 0:
+        stats = _safe_dict(session_ralenti.get("stats"))
         dur   = session_ralenti.get("duration_seconds", 0)
         reads = session_ralenti.get("readings_count", 0)
-        def _fs(key, unit):
-            st = stats.get(key, {})
-            if not st or not st.get("max"):
-                return "N/A"
-            return f"{st.get('min','?')}{unit} — {st.get('max','?')}{unit}  (moy. {st.get('avg','?')}{unit})"
-        story.append(_info_table([
-            ["Durée",       f"{dur}s · {reads} mesures"],
-            ["RPM",         _fs("rpm", " tr/min")],
-            ["Température", _fs("temp", "°C")],
-            ["Vitesse",     _fs("speed", " km/h")],
-            ["Batterie",    _fs("voltage", "V")],
-        ]))
-        anomalies = session_ralenti.get("anomalies", [])
+        story.append(_keep(
+            _section_header("Données au ralenti"),
+            Spacer(1, 0.2*cm),
+            _info_table([
+                ["Durée",       f"{dur}s · {reads} mesures"],
+                ["RPM",         _fmt_stat(stats, "rpm",     " tr/min")],
+                ["Température", _fmt_stat(stats, "temp",    "°C")],
+                ["Vitesse",     _fmt_stat(stats, "speed",   " km/h")],
+                ["Batterie",    _fmt_stat(stats, "voltage", "V")],
+            ]),
+        ))
+        anomalies = _safe_list(session_ralenti.get("anomalies"))
         if anomalies:
             story.append(Spacer(1, 0.15*cm))
             story.append(Paragraph("Anomalies détectées au ralenti :", s["bold"]))
             for a in anomalies[:10]:
-                ts = (a.get("timestamp") or "")[11:19]
-                story.append(Paragraph(f"  [{ts}] {a.get('message','')}", s["body_sm"]))
+                a = _safe_dict(a)
+                ts = _safe_str(a.get("timestamp"))[11:19]
+                story.append(_safe_para_escaped(f"  [{ts}] {_safe_str(a.get('message'))}", s["body_sm"]))
         story.append(Spacer(1, 0.4*cm))
 
     # ── SESSION ROULANT ──
-    session_roulant = diagnostic.get("session_roulant") or (
-        analyse_ia.get("session_roulant") if isinstance(analyse_ia, dict) else None
+    _log("section roulant")
+    session_roulant = _safe_dict(
+        diagnostic.get("session_roulant") or analyse_ia.get("session_roulant")
     )
-    if session_roulant and isinstance(session_roulant, dict) and session_roulant.get("readings_count", 0) > 0:
-        story.append(_section_header("🏎️  DONNÉES EN ROULANT"))
-        story.append(Spacer(1, 0.2*cm))
-        stats = session_roulant.get("stats", {})
+    if session_roulant and session_roulant.get("readings_count", 0) > 0:
+        stats = _safe_dict(session_roulant.get("stats"))
         dur   = session_roulant.get("duration_seconds", 0)
         reads = session_roulant.get("readings_count", 0)
-        def _fs_r(key, unit):
-            st = stats.get(key, {})
-            if not st or not st.get("max"):
-                return "N/A"
-            return f"{st.get('min','?')}{unit} — {st.get('max','?')}{unit}  (moy. {st.get('avg','?')}{unit})"
-        story.append(_info_table([
-            ["Durée",       f"{dur}s · {reads} mesures"],
-            ["RPM",         _fs_r("rpm", " tr/min")],
-            ["Température", _fs_r("temp", "°C")],
-            ["Vitesse",     _fs_r("speed", " km/h")],
-            ["Batterie",    _fs_r("voltage", "V")],
-        ]))
-        anomalies = session_roulant.get("anomalies", [])
+        story.append(_keep(
+            _section_header("Données en roulant"),
+            Spacer(1, 0.2*cm),
+            _info_table([
+                ["Durée",       f"{dur}s · {reads} mesures"],
+                ["RPM",         _fmt_stat(stats, "rpm",     " tr/min")],
+                ["Température", _fmt_stat(stats, "temp",    "°C")],
+                ["Vitesse",     _fmt_stat(stats, "speed",   " km/h")],
+                ["Batterie",    _fmt_stat(stats, "voltage", "V")],
+            ]),
+        ))
+        anomalies = _safe_list(session_roulant.get("anomalies"))
         if anomalies:
             story.append(Spacer(1, 0.15*cm))
             story.append(Paragraph("Anomalies détectées en roulant :", s["bold"]))
             for a in anomalies[:10]:
-                ts = (a.get("timestamp") or "")[11:19]
-                story.append(Paragraph(f"  [{ts}] {a.get('message','')}", s["body_sm"]))
+                a = _safe_dict(a)
+                ts = _safe_str(a.get("timestamp"))[11:19]
+                story.append(_safe_para_escaped(f"  [{ts}] {_safe_str(a.get('message'))}", s["body_sm"]))
         story.append(Spacer(1, 0.4*cm))
 
     # ── CORRÉLATIONS ──
-    if isinstance(analyse_ia, dict):
-        analyse_ralenti = analyse_ia.get("analyse_ralenti", "")
-        analyse_roulant = analyse_ia.get("analyse_roulant", "")
-        correlations    = analyse_ia.get("correlations", "")
-        if any([analyse_ralenti, analyse_roulant, correlations]):
-            story.append(_section_header("🔗  CORRÉLATIONS ET ANALYSES"))
-            story.append(Spacer(1, 0.2*cm))
-            if analyse_ralenti:
-                story.append(Paragraph("<b>Analyse ralenti :</b> " + analyse_ralenti, s["body"]))
-                story.append(Spacer(1, 0.1*cm))
-            if analyse_roulant and analyse_roulant.lower() not in ("non réalisé", "n/a", ""):
-                story.append(Paragraph("<b>Analyse conduite :</b> " + analyse_roulant, s["body"]))
-                story.append(Spacer(1, 0.1*cm))
-            if correlations:
-                story.append(Paragraph("<b>Corrélations clés :</b> " + correlations, s["body"]))
-            story.append(Spacer(1, 0.3*cm))
+    _log("section correlations")
+    analyse_ralenti = _safe_str(analyse_ia.get("analyse_ralenti"))
+    analyse_roulant = _safe_str(analyse_ia.get("analyse_roulant"))
+    correlations    = _safe_str(analyse_ia.get("correlations"))
+    if any([analyse_ralenti, analyse_roulant, correlations]):
+        story.append(_section_header("Corrélations et analyses"))
+        story.append(Spacer(1, 0.2*cm))
+        if analyse_ralenti:
+            story.append(Paragraph("<b>Analyse ralenti :</b> " + _xml_escape(analyse_ralenti), s["body"]))
+            story.append(Spacer(1, 0.1*cm))
+        if analyse_roulant and analyse_roulant.lower() not in ("non réalisé", "n/a", ""):
+            story.append(Paragraph("<b>Analyse conduite :</b> " + _xml_escape(analyse_roulant), s["body"]))
+            story.append(Spacer(1, 0.1*cm))
+        if correlations:
+            story.append(Paragraph("<b>Corrélations clés :</b> " + _xml_escape(correlations), s["body"]))
+        story.append(Spacer(1, 0.3*cm))
 
     # ── NOTES TECHNICIEN ──
-    notes = vehicle.get("notes", "").strip()
+    # Header + premier paragraphe regroupés ; si les notes sont longues, le
+    # paragraphe coulera grâce à splitLongParagraphs / widows-orphans.
+    notes = _safe_str(vehicle.get("notes")).strip()
     if notes:
-        story.append(_section_header("📝  NOTES DU TECHNICIEN"))
-        story.append(Spacer(1, 0.2*cm))
-        story.append(Paragraph(notes, s["body"]))
+        story.append(_keep(
+            _section_header("Notes du technicien"),
+            Spacer(1, 0.2*cm),
+            _safe_para_escaped(notes, s["body"]),
+        ))
 
     # ── PIED GARAGE ──
+    _log("section garage_footer")
     for el in _garage_footer_block(garage, s):
         story.append(el)
 
+    _log(f"doc.build START ({len(story)} flowables)")
     doc.build(story)
+    _log("doc.build OK")
     buffer.seek(0)
     return buffer.read()
 
 
 # ── CLIENT PDF (simplifié) ────────────────────────────────────────────────────
 def export_client_pdf(vehicle: dict, diagnostic: dict, garage: dict = None) -> bytes:
+    _log("export_client_pdf START")
+    vehicle    = _safe_dict(vehicle)
+    diagnostic = _safe_dict(diagnostic)
+    garage     = _safe_dict(garage)
+
     buffer = io.BytesIO()
-    marque = vehicle.get("marque", "Véhicule")
-    modele = vehicle.get("modele", "")
-    annee  = vehicle.get("annee", "")
-    code   = vehicle.get("code", "")
-    surnom = vehicle.get("surnom", "")
+    marque = _safe_str(vehicle.get("marque"), "Véhicule")
+    modele = _safe_str(vehicle.get("modele"))
+    annee  = _safe_str(vehicle.get("annee"))
+    code   = _safe_str(vehicle.get("code"))
+    surnom = _safe_str(vehicle.get("surnom"))
     label  = surnom or f"{marque} {modele} {annee}".strip()
     if code:
         label = f"[{code}] {label}"
 
-    doc = _make_doc(buffer, title=f"Fiche client — {label}")
+    # Détection mode : "panne" (défaut) ou "controle" → libellés adaptés
+    diag_type = _safe_str(diagnostic.get("type"), "panne") or "panne"
+    is_bilan  = (diag_type == "controle")
+    main_title  = "Bilan client" if is_bilan else "Rapport client"
+    doc_title   = f"Bilan client — {label}" if is_bilan else f"Fiche client — {label}"
+    result_label = "Résultat du bilan" if is_bilan else "Résultat du diagnostic"
+    actions_label = "Recommandations préventives" if is_bilan else "Actions recommandées"
+
+    doc = _make_doc(buffer, title=doc_title)
     s   = _styles()
     story = []
 
-    story.append(_main_header("RAPPORT CLIENT OBD2", label, s))
+    story.append(_main_header(main_title, label, s))
     story.append(Spacer(1, 0.5*cm))
 
-    analyse_ia = diagnostic.get("analyse_ia", {}) or {}
-    if isinstance(analyse_ia, str):
-        analyse_ia = {}
-    statut = analyse_ia.get("statut_global", "OK")
-    story.append(_section_header("📋  RÉSULTAT DU DIAGNOSTIC"))
-    story.append(Spacer(1, 0.2*cm))
-    story.append(_status_badge(statut))
+    analyse_ia = _safe_dict(diagnostic.get("analyse_ia"))
+    statut = _safe_str(analyse_ia.get("statut_global"), "OK")
+    # Bloc identité diagnostic : header + badge groupés
+    story.append(_keep(
+        _section_header(result_label),
+        Spacer(1, 0.2*cm),
+        _status_badge(statut),
+    ))
     story.append(Spacer(1, 0.3*cm))
 
-    resume = analyse_ia.get("resume", "") or analyse_ia.get("analyse_globale", "")
+    resume = _safe_str(analyse_ia.get("resume")) or _safe_str(analyse_ia.get("analyse_globale"))
     if resume:
-        t = Table([[Paragraph(resume, ParagraphStyle(
-            "RES", parent=getSampleStyleSheet()["Normal"],
-            fontSize=10, textColor=C_TEXT, leading=16, spaceAfter=0))]],
-            colWidths=[CONTENT_W])
+        resume_style = ParagraphStyle("RES", parent=getSampleStyleSheet()["Normal"],
+            fontSize=10, textColor=C_TEXT, leading=16, spaceAfter=0)
+        t = Table([[_safe_para_escaped(resume, resume_style)]], colWidths=[CONTENT_W])
         t.setStyle(TableStyle([
             ("BACKGROUND",  (0, 0), (-1, -1), colors.HexColor("#f0f7f0")),
             ("TOPPADDING",  (0, 0), (-1, -1), 12),
@@ -855,20 +1040,27 @@ def export_client_pdf(vehicle: dict, diagnostic: dict, garage: dict = None) -> b
         story.append(t)
         story.append(Spacer(1, 0.3*cm))
 
-    # Plan d'action simplifié
-    plan = analyse_ia.get("plan_action", [])
+    # Plan d'action simplifié — chaque étape groupée pour ne pas couper au milieu
+    plan = _safe_list(analyse_ia.get("plan_action"))
     if plan:
-        story.append(_section_header("🛠️  ACTIONS RECOMMANDÉES"))
-        story.append(Spacer(1, 0.2*cm))
-        base = getSampleStyleSheet()
+        story.append(_keep(
+            _section_header(actions_label),
+            Spacer(1, 0.2*cm),
+        ))
+        prio_color_client = {"URGENT": _HX_URGENT, "IMPORTANT": _HX_WARN}
         for step in plan[:5]:
-            prio  = step.get("priorite", "")
-            emoji = "🔴" if prio == "URGENT" else "🟡" if prio == "IMPORTANT" else "🟢"
-            story.append(Paragraph(
-                f"{emoji} <b>Étape {step.get('etape','')} :</b> {step.get('action','')} "
-                f"— {step.get('cout_estime','?')} — {step.get('duree_estimee','?')}",
+            step  = _safe_dict(step)
+            prio  = _safe_str(step.get("priorite"))
+            color = prio_color_client.get(prio, _HX_OK)
+            etape  = _xml_escape(_safe_str(step.get("etape")))
+            action = _xml_escape(_safe_str(step.get("action")))
+            cout   = _xml_escape(_safe_str(step.get("cout_estime"), "?"))
+            duree  = _xml_escape(_safe_str(step.get("duree_estimee"), "?"))
+            story.append(KeepTogether([Paragraph(
+                f"<font color='{color}'>■</font>  <b>Étape {etape}</b>  —  {action}  "
+                f"<font color='{_HX_MUTED}'>({cout} · {duree})</font>",
                 s["body"]
-            ))
+            )]))
 
     story.append(Spacer(1, 0.5*cm))
     story.append(HRFlowable(width="100%", thickness=1, color=C_BORDER))
@@ -883,13 +1075,26 @@ def export_client_pdf(vehicle: dict, diagnostic: dict, garage: dict = None) -> b
     for el in _garage_footer_block(garage, s):
         story.append(el)
 
+    _log(f"export_client_pdf doc.build START ({len(story)} flowables)")
     doc.build(story)
+    _log("export_client_pdf doc.build OK")
     buffer.seek(0)
     return buffer.read()
 
 
 # ── RAPPORT MENSUEL ────────────────────────────────────────────────────────────
 def export_monthly_report(vehicles: list, month: int, year: int) -> bytes:
+    _log(f"export_monthly_report START month={month} year={year}")
+    vehicles = _safe_list(vehicles)
+    try:
+        month = int(month)
+        year  = int(year)
+    except (TypeError, ValueError):
+        _log(f"export_monthly_report ✗ month/year invalides — fallback 1/2025")
+        month, year = 1, 2025
+    if not (1 <= month <= 12):
+        month = 1
+
     buffer    = io.BytesIO()
     month_str = f"{MONTHS_FR[month]} {year}"
     doc = _make_doc(buffer, title=f"Rapport flotte — {month_str}")
@@ -897,58 +1102,69 @@ def export_monthly_report(vehicles: list, month: int, year: int) -> bytes:
     story = []
 
     story.append(_main_header(
-        "RAPPORT MENSUEL FLOTTE",
-        f"RODIA — {month_str} — {len(vehicles)} véhicule(s)",
+        "Rapport mensuel flotte",
+        f"{month_str}  ·  {len(vehicles)} véhicule(s)",
         s
     ))
     story.append(Spacer(1, 0.5*cm))
 
-    total_diags = sum(len([
-        e for e in v.get("historique", [])
-        if e.get("date", "").startswith(f"{year}-{month:02d}")
-    ]) for v in vehicles)
-    total_reps = sum(len(v.get("reparations", [])) for v in vehicles)
+    def _hist_in_month(v):
+        return [e for e in _safe_list(_safe_dict(v).get("historique"))
+                if isinstance(e, dict) and _safe_str(e.get("date")).startswith(f"{year}-{month:02d}")]
 
-    story.append(_section_header("📊  RÉSUMÉ DU MOIS"))
-    story.append(Spacer(1, 0.2*cm))
-    story.append(_info_table([
-        ["Période",             month_str],
-        ["Véhicules en flotte", str(len(vehicles))],
-        ["Diagnostics ce mois", str(total_diags)],
-        ["Réparations totales", str(total_reps)],
-    ]))
+    total_diags = sum(len(_hist_in_month(v)) for v in vehicles)
+    total_reps  = sum(len(_safe_list(_safe_dict(v).get("reparations"))) for v in vehicles)
+
+    story.append(_keep(
+        _section_header("Résumé du mois"),
+        Spacer(1, 0.2*cm),
+        _info_table([
+            ["Période",             month_str],
+            ["Véhicules en flotte", str(len(vehicles))],
+            ["Diagnostics ce mois", str(total_diags)],
+            ["Réparations totales", str(total_reps)],
+        ]),
+    ))
     story.append(Spacer(1, 0.5*cm))
 
-    story.append(_section_header("🚗  DÉTAIL PAR VÉHICULE"))
+    story.append(_section_header("Détail par véhicule"))
     story.append(Spacer(1, 0.2*cm))
+    # Chaque véhicule (titre + ses diagnostics du mois) regroupé pour ne pas
+    # couper le label du véhicule de sa première ligne d'historique.
     for v in vehicles:
-        vin    = v.get("vin", "")
-        label  = f"{v.get('marque','')} {v.get('modele','')} {v.get('annee','')}".strip() or vin
-        code   = v.get("code", "")
-        surnom = v.get("surnom", "")
+        v      = _safe_dict(v)
+        vin    = _safe_str(v.get("vin"))
+        label  = f"{_safe_str(v.get('marque'))} {_safe_str(v.get('modele'))} {_safe_str(v.get('annee'))}".strip() or vin
+        code   = _safe_str(v.get("code"))
+        surnom = _safe_str(v.get("surnom"))
         disp   = surnom or label
         if code:
             disp = f"[{code}] {disp}"
 
-        month_diags = [
-            e for e in v.get("historique", [])
-            if e.get("date", "").startswith(f"{year}-{month:02d}")
-        ]
-        story.append(Paragraph(f"<b>{disp}</b>  <font color='{_HX_MUTED}'>— VIN : {vin}</font>",
-                               s["bold"]))
+        month_diags = _hist_in_month(v)
+        # Markup <b><font> volontaire — les valeurs interpolées sont escaped
+        v_block = [Paragraph(
+            f"<b>{_xml_escape(disp)}</b>  <font color='{_HX_MUTED}'>— VIN : {_xml_escape(vin)}</font>",
+            s["bold"]
+        )]
         if month_diags:
             for e in month_diags:
-                codes = ", ".join(e.get("dtc_codes", [])) or "Aucun"
-                story.append(Paragraph(
-                    f"  • {e.get('date_affichage','')} — {e.get('kilometrage',0)} km — "
-                    f"Codes : {codes} — Statut : {e.get('statut','OK')}",
+                e = _safe_dict(e)
+                codes = ", ".join(_safe_str(c) for c in _safe_list(e.get("dtc_codes")) if c) or "Aucun"
+                v_block.append(_safe_para_escaped(
+                    f"  • {_safe_str(e.get('date_affichage'))} — "
+                    f"{_safe_str(e.get('kilometrage'), '0')} km — "
+                    f"Codes : {codes} — Statut : {_safe_str(e.get('statut'), 'OK')}",
                     s["body_sm"]
                 ))
         else:
-            story.append(Paragraph("  Aucun diagnostic ce mois", s["body_sm"]))
-        story.append(Spacer(1, 0.2*cm))
+            v_block.append(Paragraph("  Aucun diagnostic ce mois", s["body_sm"]))
+        v_block.append(Spacer(1, 0.2*cm))
+        story.append(KeepTogether(v_block))
 
+    _log(f"export_monthly_report doc.build START ({len(story)} flowables)")
     doc.build(story)
+    _log("export_monthly_report doc.build OK")
     buffer.seek(0)
     return buffer.read()
 
@@ -957,18 +1173,33 @@ def export_monthly_report(vehicles: list, month: int, year: int) -> bytes:
 def export_maintenance_pdf(vehicle: dict, maintenance_items: list, repairs: list,
                            garage: dict = None) -> bytes:
     """Fiche synthétique d'entretien par véhicule : planning + réparations."""
+    _log("export_maintenance_pdf START")
+    vehicle           = _safe_dict(vehicle)
+    maintenance_items = _safe_list(maintenance_items)
+    repairs           = _safe_list(repairs)
+    garage            = _safe_dict(garage)
+
     buffer = io.BytesIO()
-    vin          = vehicle.get("vin", "N/A")
-    marque       = vehicle.get("marque", "")
-    modele       = vehicle.get("modele", "")
-    annee        = vehicle.get("annee", "")
-    code_label   = vehicle.get("code", "")
-    surnom       = vehicle.get("surnom", "")
-    motorisation = vehicle.get("motorisation", "")
+    vin          = _safe_str(vehicle.get("vin"), "N/A")
+    marque       = _safe_str(vehicle.get("marque"))
+    modele       = _safe_str(vehicle.get("modele"))
+    annee        = _safe_str(vehicle.get("annee"))
+    code_label   = _safe_str(vehicle.get("code"))
+    surnom       = _safe_str(vehicle.get("surnom"))
+    motorisation = _safe_str(vehicle.get("motorisation"))
     km_manuel    = vehicle.get("km_manuel")
-    hist         = vehicle.get("historique", [])
-    last_km_obd  = hist[0].get("kilometrage", 0) if hist else 0
-    km_ref       = km_manuel if km_manuel is not None else last_km_obd
+    hist         = _safe_list(vehicle.get("historique"))
+    # Premier élément peut être None ou pas un dict
+    last_km_obd  = 0
+    if hist and isinstance(hist[0], dict):
+        try:
+            last_km_obd = int(hist[0].get("kilometrage") or 0)
+        except (TypeError, ValueError):
+            last_km_obd = 0
+    try:
+        km_ref = int(km_manuel) if km_manuel is not None else last_km_obd
+    except (TypeError, ValueError):
+        km_ref = last_km_obd
 
     vehicle_label = surnom or f"{marque} {modele} {annee}".strip() or vin
     if code_label:
@@ -979,15 +1210,13 @@ def export_maintenance_pdf(vehicle: dict, maintenance_items: list, repairs: list
     story = []
 
     story.append(_main_header(
-        "FICHE D'ENTRETIEN",
-        f"{vehicle_label} — {datetime.now().strftime('%d/%m/%Y')}",
+        "Fiche d'entretien",
+        f"{vehicle_label}  ·  {datetime.now().strftime('%d/%m/%Y')}",
         s
     ))
     story.append(Spacer(1, 0.5*cm))
 
     # ── Infos véhicule ──
-    story.append(_section_header("🚗  INFORMATIONS VÉHICULE"))
-    story.append(Spacer(1, 0.2*cm))
     infos = [["VIN", vin]]
     if marque:       infos.append(["Marque",        marque])
     if modele:       infos.append(["Modèle",        modele])
@@ -995,11 +1224,17 @@ def export_maintenance_pdf(vehicle: dict, maintenance_items: list, repairs: list
     if motorisation: infos.append(["Motorisation",  motorisation])
     if code_label:   infos.append(["Code flotte",   code_label])
     infos.append(["Kilométrage actuel", f"{km_ref:,} km".replace(",", "\u202f")])
-    story.append(_info_table(infos))
+    story.append(_keep(
+        _section_header("Informations véhicule"),
+        Spacer(1, 0.2*cm),
+        _info_table(infos),
+    ))
     story.append(Spacer(1, 0.5*cm))
 
     # ── Planning entretien ──
-    story.append(_section_header("🔧  PLANNING D'ENTRETIEN"))
+    # Header keepWithNext via _section_header → bascule avec la table qui suit
+    # (table avec repeatRows=1 pour répéter l'en-tête sur chaque page).
+    story.append(_section_header("Planning d'entretien"))
     story.append(Spacer(1, 0.2*cm))
 
     base = getSampleStyleSheet()
@@ -1009,7 +1244,7 @@ def export_maintenance_pdf(vehicle: dict, maintenance_items: list, repairs: list
         fontSize=7.5, textColor=C_TEXT, alignment=TA_LEFT)
 
     STATUS_COLOR = {"ok": C_OK, "warning": C_WARN, "urgent": C_URGENT, "unknown": C_MUTED}
-    STATUS_LABEL = {"ok": "✅ OK", "warning": "⚠ Bientôt", "urgent": "⛔ Dépassé", "unknown": "❓ —"}
+    STATUS_LABEL = {"ok": "OK", "warning": "Bientôt", "urgent": "Dépassé", "unknown": "—"}
 
     rows = [[
         Paragraph("Opération",   hdr_style),
@@ -1019,23 +1254,31 @@ def export_maintenance_pdf(vehicle: dict, maintenance_items: list, repairs: list
         Paragraph("Statut",      hdr_style),
     ]]
     for item in maintenance_items:
-        label_p      = f"{item.get('icon','')} {item.get('label','')}"
-        interval_km  = item.get("interval_km")
-        interval_mo  = item.get("interval_months")
+        item         = _safe_dict(item)
+        # On ignore item.get('icon') — c'est un emoji qui rend en tofu en PDF
+        label_p      = _safe_str(item.get("label")).strip() or "—"
+        try:    interval_km = int(item.get("interval_km")) if item.get("interval_km") else None
+        except (TypeError, ValueError): interval_km = None
+        try:    interval_mo = int(item.get("interval_months")) if item.get("interval_months") else None
+        except (TypeError, ValueError): interval_mo = None
         interval_str = (f"/{interval_km:,} km".replace(",", "\u202f") if interval_km else "") + \
                        (f" / {interval_mo} mois" if interval_mo else "") or "—"
-        last_km_str  = f"{item.get('last_km',0):,} km".replace(",", "\u202f") if item.get("last_km") else "Jamais"
-        next_km_str  = f"{item.get('next_km',0):,} km".replace(",", "\u202f") if item.get("next_km") else "—"
-        stat_key     = item.get("status", "unknown")
+        try:    last_km = int(item.get("last_km")) if item.get("last_km") else None
+        except (TypeError, ValueError): last_km = None
+        try:    next_km = int(item.get("next_km")) if item.get("next_km") else None
+        except (TypeError, ValueError): next_km = None
+        last_km_str  = f"{last_km:,} km".replace(",", "\u202f") if last_km else "Jamais"
+        next_km_str  = f"{next_km:,} km".replace(",", "\u202f") if next_km else "—"
+        stat_key     = _safe_str(item.get("status"), "unknown") or "unknown"
         stat_color   = STATUS_COLOR.get(stat_key, C_MUTED)
         stat_style   = ParagraphStyle(f"_ST_{stat_key}", parent=base["Normal"],
                            fontSize=7.5, textColor=stat_color, fontName="Helvetica-Bold", alignment=TA_CENTER)
         rows.append([
-            Paragraph(label_p,                     cell_style),
-            Paragraph(interval_str,                cell_style),
-            Paragraph(last_km_str,                 cell_style),
-            Paragraph(next_km_str,                 cell_style),
-            Paragraph(STATUS_LABEL.get(stat_key,"—"), stat_style),
+            _safe_para_escaped(label_p,                cell_style),  # user-controlled
+            _safe_para(interval_str,                   cell_style),
+            _safe_para(last_km_str,                    cell_style),
+            _safe_para(next_km_str,                    cell_style),
+            _safe_para(STATUS_LABEL.get(stat_key,"—"), stat_style),
         ])
 
     col_w = [CONTENT_W * r for r in [0.28, 0.17, 0.18, 0.18, 0.19]]
@@ -1053,7 +1296,7 @@ def export_maintenance_pdf(vehicle: dict, maintenance_items: list, repairs: list
 
     # ── Réparations ──
     if repairs:
-        story.append(_section_header("📋  HISTORIQUE DES RÉPARATIONS"))
+        story.append(_section_header("Historique des réparations"))
         story.append(Spacer(1, 0.2*cm))
         rep_rows = [[
             Paragraph("Date",        hdr_style),
@@ -1064,7 +1307,8 @@ def export_maintenance_pdf(vehicle: dict, maintenance_items: list, repairs: list
         ]]
         total_cost = 0.0
         for r in repairs:
-            cout_raw = (r.get("cout") or "").strip()
+            r        = _safe_dict(r)
+            cout_raw = _safe_str(r.get("cout")).strip()
             try:
                 c = float(cout_raw.replace(",", "."))
                 total_cost += c
@@ -1072,11 +1316,11 @@ def export_maintenance_pdf(vehicle: dict, maintenance_items: list, repairs: list
             except ValueError:
                 cout_str = cout_raw or "—"
             rep_rows.append([
-                Paragraph(r.get("date_affichage") or r.get("date",""), cell_style),
-                Paragraph(r.get("description",""),                      cell_style),
-                Paragraph(r.get("pieces","") or "—",                   cell_style),
-                Paragraph(cout_str,                                     cell_style),
-                Paragraph(r.get("technicien","") or "—",               cell_style),
+                _safe_para_escaped(_safe_str(r.get("date_affichage")) or _safe_str(r.get("date")), cell_style),
+                _safe_para_escaped(_safe_str(r.get("description")),                                 cell_style),
+                _safe_para_escaped(_safe_str(r.get("pieces")) or "—",                               cell_style),
+                _safe_para_escaped(cout_str,                                                         cell_style),
+                _safe_para_escaped(_safe_str(r.get("technicien")) or "—",                           cell_style),
             ])
         col_w2 = [CONTENT_W * r for r in [0.14, 0.36, 0.22, 0.14, 0.14]]
         t2 = Table(rep_rows, colWidths=col_w2, repeatRows=1)
@@ -1097,6 +1341,8 @@ def export_maintenance_pdf(vehicle: dict, maintenance_items: list, repairs: list
             ))
 
     story += _garage_footer_block(garage, s)
+    _log(f"export_maintenance_pdf doc.build START ({len(story)} flowables)")
     doc.build(story)
+    _log("export_maintenance_pdf doc.build OK")
     buffer.seek(0)
     return buffer.read()

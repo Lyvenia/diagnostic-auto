@@ -6,11 +6,11 @@
 ;  Usage :
 ;    1. Construire RODIA avec PyInstaller (pyinstaller DiagnosticAuto.spec)
 ;    2. Ouvrir ce fichier dans Inno Setup Compiler
-;    3. Build → l'installateur est généré dans installer\RODIA-Setup-v1.0.0.exe
+;    3. Build → l'installateur est généré dans installer\RODIA-Setup-v1.0.1.exe
 ; ══════════════════════════════════════════════════════════════════════════════
 
 #define AppName      "RODIA"
-#define AppVersion   "1.0.0"
+#define AppVersion   "1.1.0"
 #define AppPublisher "Lyvenia"
 #define AppURL       "https://lyvenia.fr/rodia.html"
 #define AppExeName   "RODIA.exe"
@@ -109,5 +109,7 @@ Filename: "taskkill.exe"; \
 
 ; ── Nettoyage à la désinstallation ────────────────────────────────────────────
 [UninstallDelete]
-; Supprime le dossier RODIA dans AppData (config, logs)
-Type: filesandordirs; Name: "{localappdata}\RODIA"
+; Supprime le dossier RODIA dans AppData (config, logs, flotte)
+; Note : config.json n'est PAS supprimé à chaque install (il contient le JWT de session).
+; La migration Python dans core/config.py corrige simulation_mode au démarrage si besoin.
+Type: filesandordirs; Name: "{userappdata}\RODIA"

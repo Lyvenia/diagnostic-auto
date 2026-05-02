@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RODIA — Preview Phase 1</title>
+
+<!-- Inter via Google Fonts (preview seulement — sera bundlé local en Phase 2) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+
+<!-- Le nouveau CSS — c'est le seul style chargé sur cette page -->
+<!-- Chemin relatif pour ouverture directe (double-clic) ou via Flask -->
+<link rel="stylesheet" href="style.new.css">
+
+<style>
+  /* Quelques styles de section uniquement pour la page preview */
+  .preview-section { padding: 32px; border-bottom: 1px solid var(--border); }
+  .preview-title   { font-size: .68rem; font-weight: 600; letter-spacing: .12em;
+                     text-transform: uppercase; color: var(--text-label); margin-bottom: 14px; }
+  .preview-grid    { display: grid; gap: 14px; }
+  .swatch          { display: flex; flex-direction: column; gap: 6px; font-size: .76rem; }
+  .swatch-color    { width: 100%; height: 56px; border-radius: var(--r-sm); border: 1px solid var(--border); }
+  .swatch-name     { font-family: var(--font-mono); color: var(--text-primary); font-weight: 500; }
+  .swatch-hex      { color: var(--text-muted); font-family: var(--font-mono); font-size: .72rem; }
+  .demo-shell      { background: var(--bg-base); border: 1px solid var(--border-strong);
+                     border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-md); }
+  .demo-shell .topbar { border-radius: 0; }
+  .theme-switch    { position: fixed; top: 12px; right: 12px; z-index: 200; }
+</style>
+</head>
+<body>
+
+  <!-- Toggle thème pour vérifier l'Option C (dark mode) ─────────── -->
+  <div class="theme-switch">
+    <button class="btn btn-outline btn-sm" onclick="
+      const html = document.documentElement;
+      const next = html.dataset.theme === 'dark' ? 'light' : 'dark';
+      html.dataset.theme = next;
+      this.textContent = next === 'dark' ? 'Mode clair' : 'Mode sombre';
+    ">Mode sombre</button>
+  </div>
+
+
+  <!-- ═══ COULEURS ═══════════════════════════════════════════════ -->
+  <section class="preview-section">
+    <div class="preview-title">1 · Palette</div>
+    <div class="preview-grid" style="grid-template-columns: repeat(6, 1fr)">
+      <div class="swatch"><div class="swatch-color" style="background:var(--bg-base)"></div>      <span class="swatch-name">bg-base</span><span class="swatch-hex">#f5efe8</span></div>
+      <div class="swatch"><div class="swatch-color" style="background:var(--bg-surface)"></div>   <span class="swatch-name">bg-surface</span><span class="swatch-hex">#ffffff</span></div>
+      <div class="swatch"><div class="swatch-color" style="background:var(--bg-sidebar)"></div>   <span class="swatch-name">bg-sidebar</span><span class="swatch-hex">#ede5db</span></div>
+      <div class="swatch"><div class="swatch-color" style="background:var(--ink)"></div>          <span class="swatch-name">ink</span><span class="swatch-hex">#0e1f15</span></div>
+      <div class="swatch"><div class="swatch-color" style="background:var(--accent)"></div>       <span class="swatch-name">accent</span><span class="swatch-hex">#a85c4a</span></div>
+      <div class="swatch"><div class="swatch-color" style="background:var(--accent-soft)"></div>  <span class="swatch-name">accent-soft</span><span class="swatch-hex">#e8b4a4</span></div>
+      <div class="swatch"><div class="swatch-color" style="background:var(--success)"></div>      <span class="swatch-name">success</span><span class="swatch-hex">#4a7c4e</span></div>
+      <div class="swatch"><div class="swatch-color" style="background:var(--warning)"></div>      <span class="swatch-name">warning</span><span class="swatch-hex">#c08543</span></div>
+      <div class="swatch"><div class="swatch-color" style="background:var(--danger)"></div>       <span class="swatch-name">danger</span><span class="swatch-hex">#9a4632</span></div>
+      <div class="swatch"><div class="swatch-color" style="background:var(--warning-bg)"></div>   <span class="swatch-name">warning-bg</span><span class="swatch-hex">#f4d9a8</span></div>
+      <div class="swatch"><div class="swatch-color" style="background:var(--border)"></div>       <span class="swatch-name">border</span><span class="swatch-hex">#e3dccf</span></div>
+      <div class="swatch"><div class="swatch-color" style="background:var(--text-primary)"></div> <span class="swatch-name">text-primary</span><span class="swatch-hex">#0e1f15</span></div>
+    </div>
+  </section>
+
+
+  <!-- ═══ TYPOGRAPHIE ════════════════════════════════════════════ -->
+  <section class="preview-section">
+    <div class="preview-title">2 · Typographie · Inter</div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="t-display">Des logiciels qui mettent vos flottes en mouvement.</div>
+      <div class="t-h1">Aperçu de la flotte</div>
+      <div class="t-h2">Santé de la flotte</div>
+      <div class="t-body">Lyvenia conçoit des outils SaaS pour les professionnels de la mobilité. Ce paragraphe est en taille body courante, 0.95rem.</div>
+      <div class="t-body-sm t-muted">Texte secondaire — 0.85rem, muet, idéal pour métadonnées et hints.</div>
+      <div class="t-label">TEMPS RÉEL · 127 VÉHICULES</div>
+      <div style="display:flex;align-items:baseline;gap:14px">
+        <span class="t-kpi">114</span>
+        <span class="t-kpi-delta up">+2,1% vs 7j</span>
+        <span class="t-kpi">9</span>
+        <span class="t-kpi-delta down">−4,8%</span>
+      </div>
+      <div class="t-mono">VIN: VF1RFA00067123456 · DTC: P0261</div>
+    </div>
+  </section>
+
+
+  <!-- ═══ BOUTONS ════════════════════════════════════════════════ -->
+  <section class="preview-section">
+    <div class="preview-title">3 · Boutons · 4 variants × 3 tailles</div>
+
+    <div class="row gap-2 mb-4 items-center">
+      <button class="btn btn-primary">Lancer le diagnostic</button>
+      <button class="btn btn-secondary">Réserver une démo</button>
+      <button class="btn btn-outline">Annuler</button>
+      <button class="btn btn-ghost">Plus tard</button>
+      <button class="btn btn-danger">Supprimer</button>
+    </div>
+
+    <div class="row gap-2 mb-4 items-center">
+      <button class="btn btn-primary btn-sm">Valider</button>
+      <button class="btn btn-secondary btn-sm">Détail</button>
+      <button class="btn btn-outline btn-sm">Annuler</button>
+      <button class="btn btn-ghost btn-sm">Passer</button>
+    </div>
+
+    <div class="row gap-2 mb-4 items-center">
+      <button class="btn btn-primary btn-lg">Lancer le diagnostic complet</button>
+      <button class="btn btn-secondary btn-lg">Voir le rapport</button>
+    </div>
+
+    <div class="row gap-2 items-center">
+      <button class="btn btn-primary" disabled>Désactivé</button>
+      <button class="btn btn-icon btn-outline" aria-label="Réglages">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <button class="btn btn-icon btn-ghost btn-sm" aria-label="Plus">
+        <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg>
+      </button>
+    </div>
+  </section>
+
+
+  <!-- ═══ INPUTS ═════════════════════════════════════════════════ -->
+  <section class="preview-section">
+    <div class="preview-title">4 · Inputs</div>
+    <div class="grid grid-3 gap-4" style="max-width:900px">
+      <div>
+        <label class="field-label" for="ex1">Marque</label>
+        <input id="ex1" class="input" placeholder="Ex : Renault, Skoda…">
+        <span class="field-hint">Constructeur du véhicule</span>
+      </div>
+      <div>
+        <label class="field-label" for="ex2">Année</label>
+        <input id="ex2" class="input" type="number" placeholder="2019">
+      </div>
+      <div>
+        <label class="field-label" for="ex3">Motorisation</label>
+        <select id="ex3" class="select">
+          <option>Diesel</option><option>Essence</option><option>Hybride</option>
+        </select>
+      </div>
+      <div style="grid-column: span 3">
+        <div class="search">
+          <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input class="input" placeholder="Rechercher (VIN, marque, code DTC…)">
+        </div>
+      </div>
+      <div style="grid-column: span 3">
+        <label class="field-label" for="ex4">Notes du technicien</label>
+        <textarea id="ex4" class="textarea" placeholder="Observations, interventions effectuées…"></textarea>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ═══ KPI CARDS ══════════════════════════════════════════════ -->
+  <section class="preview-section">
+    <div class="preview-title">5 · KPI Cards (style screenshot)</div>
+    <div class="grid grid-3 gap-3" style="max-width:780px">
+      <div class="kpi">
+        <div class="kpi-label">En service</div>
+        <div class="kpi-value">114</div>
+        <div class="kpi-delta up">↗ +2,1% vs 7j</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Maintenance</div>
+        <div class="kpi-value">9</div>
+        <div class="kpi-delta down">3 urgentes</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Coût / km</div>
+        <div class="kpi-value">0,38€</div>
+        <div class="kpi-delta down">↘ −4,8%</div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ═══ BADGES ═════════════════════════════════════════════════ -->
+  <section class="preview-section">
+    <div class="preview-title">6 · Badges & Pills</div>
+    <div class="row gap-2 mb-4 items-center">
+      <span class="badge badge-warning">P0261</span>
+      <span class="badge badge-danger">P0420</span>
+      <span class="badge badge-success">OK</span>
+      <span class="badge badge-info">P0AAB</span>
+      <span class="badge badge-accent">VIN OK</span>
+      <span class="badge badge-neutral">N/A</span>
+    </div>
+    <div class="row gap-2 items-center">
+      <span class="pill pill-urgent">Urgent</span>
+      <span class="pill pill-warn">À surveiller</span>
+      <span class="pill pill-ok">OK</span>
+    </div>
+  </section>
+
+
+  <!-- ═══ DEMO SHELL — Topbar + Sidebar + KPIs (mini app) ═══════ -->
+  <section class="preview-section" style="background:var(--bg-subtle)">
+    <div class="preview-title">7 · Coquille app — topbar + sidebar + écran Aperçu</div>
+    <div class="demo-shell">
+
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="topbar-brand">
+          <div class="topbar-logo"><span class="dot"></span></div>
+          RODIA
+        </div>
+        <div class="topbar-actions">
+          <span class="connection-badge">
+            <span class="dot dot-success dot-pulse"></span>
+            Connecté · COM3
+          </span>
+          <button class="btn btn-icon btn-ghost btn-sm" aria-label="Thème">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.2 4.2l1.4 1.4m12.8 12.8 1.4 1.4M1 12h2m18 0h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
+          </button>
+          <button class="btn btn-icon btn-ghost btn-sm" aria-label="Paramètres">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Shell -->
+      <div class="app-shell">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Diagnostic</div>
+            <a class="sidebar-link active" href="#">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg>
+              Aperçu
+            </a>
+            <a class="sidebar-link" href="#">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg>
+              Nouveau diagnostic
+            </a>
+          </div>
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Flotte</div>
+            <a class="sidebar-link" href="#">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M16 3h5v5M14 10l7-7M8 21H3v-5M10 14l-7 7"/></svg>
+              Véhicules
+            </a>
+            <a class="sidebar-link" href="#">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              Maintenance
+            </a>
+            <a class="sidebar-link" href="#">
+              <svg class="icon" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4M12 17h.01"/></svg>
+              Alertes IA
+            </a>
+          </div>
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Outils</div>
+            <a class="sidebar-link" href="#">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              Scan multi-ECU
+            </a>
+            <a class="sidebar-link" href="#">
+              <svg class="icon" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Test connexion
+            </a>
+          </div>
+          <div class="sidebar-spacer"></div>
+          <div class="sidebar-footer">
+            <a class="sidebar-link" href="#">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              Paramètres
+            </a>
+            <a class="sidebar-link" href="#">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
+              Aide
+            </a>
+          </div>
+        </aside>
+
+        <!-- Main content -->
+        <main class="main">
+          <div class="main-header">
+            <div>
+              <h1 class="t-h1">Aperçu</h1>
+              <div class="t-body-sm t-muted">Mercredi 25 avril 2026</div>
+            </div>
+            <div class="t-label">Temps réel · 14 véhicules</div>
+          </div>
+
+          <!-- KPI -->
+          <div class="grid grid-3 gap-3 mb-4">
+            <div class="kpi">
+              <div class="kpi-label">En service</div>
+              <div class="kpi-value">14</div>
+              <div class="kpi-delta up">↗ +2 vs 7j</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Maintenance</div>
+              <div class="kpi-value">3</div>
+              <div class="kpi-delta down">1 urgente</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Diags ce mois</div>
+              <div class="kpi-value">27</div>
+              <div class="kpi-delta up">↗ +18%</div>
+            </div>
+          </div>
+
+          <!-- Filtres + liste -->
+          <div class="card-header">
+            <h2 class="t-h2">Santé de la flotte</h2>
+            <div class="tabs-text">
+              <button class="active">Tous (14)</button>
+              <button>Urgent (1)</button>
+              <button>À surveiller (3)</button>
+              <button>OK (10)</button>
+            </div>
+          </div>
+
+          <div class="list">
+            <div class="list-row active">
+              <span class="dot dot-danger"></span>
+              <div class="list-row-main">
+                <div class="list-row-title">
+                  Citroën Berlingo <span class="t-mono t-muted">#FR-219</span>
+                </div>
+                <div class="list-row-meta">P0420 · catalyseur · il y a 4 jours</div>
+              </div>
+              <div class="list-row-aside">
+                <span class="pill pill-urgent">Urgent</span>
+                <span class="t-kpi" style="font-size:1.1rem">6.1</span>
+              </div>
+            </div>
+            <div class="list-row">
+              <span class="dot dot-warning"></span>
+              <div class="list-row-main">
+                <div class="list-row-title">
+                  Renault Kangoo <span class="t-mono t-muted">#FR-214</span>
+                  <span class="badge badge-warning">P0261</span>
+                </div>
+                <div class="list-row-meta">Injecteur cyl. 2 · confiance 87% · hier</div>
+              </div>
+              <div class="list-row-aside">
+                <span class="pill pill-warn">À surveiller</span>
+                <span class="t-kpi" style="font-size:1.1rem">8.4</span>
+              </div>
+            </div>
+            <div class="list-row">
+              <span class="dot dot-success"></span>
+              <div class="list-row-main">
+                <div class="list-row-title">
+                  Skoda Octavia <span class="t-mono t-muted">#FR-208</span>
+                </div>
+                <div class="list-row-meta">Diagnostic propre · il y a 3 jours</div>
+              </div>
+              <div class="list-row-aside">
+                <span class="pill pill-ok">OK</span>
+                <span class="t-kpi" style="font-size:1.1rem">8.7</span>
+              </div>
+            </div>
+            <div class="list-row">
+              <span class="dot dot-success"></span>
+              <div class="list-row-main">
+                <div class="list-row-title">
+                  Renault Trafic <span class="t-mono t-muted">#FR-202</span>
+                </div>
+                <div class="list-row-meta">Diagnostic propre · il y a 1 semaine</div>
+              </div>
+              <div class="list-row-aside">
+                <span class="pill pill-ok">OK</span>
+                <span class="t-kpi" style="font-size:1.1rem">9.1</span>
+              </div>
+            </div>
+          </div>
+
+        </main>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ═══ STEPPER ═══════════════════════════════════════════════ -->
+  <section class="preview-section">
+    <div class="preview-title">8 · Stepper (wizard diagnostic)</div>
+    <div class="stepper" style="max-width:780px">
+      <div class="step done"><div class="step-bullet">✓</div><div class="step-label">Lecture</div></div>
+      <div class="step-bar done"></div>
+      <div class="step active"><div class="step-bullet">2</div><div class="step-label">Contexte</div></div>
+      <div class="step-bar"></div>
+      <div class="step"><div class="step-bullet">3</div><div class="step-label">Ralenti</div></div>
+      <div class="step-bar"></div>
+      <div class="step"><div class="step-bullet">4</div><div class="step-label">Roulant</div></div>
+      <div class="step-bar"></div>
+      <div class="step"><div class="step-bullet">5</div><div class="step-label">Analyse</div></div>
+    </div>
+  </section>
+
+
+  <!-- ═══ ACCORDION ═════════════════════════════════════════════ -->
+  <section class="preview-section">
+    <div class="preview-title">9 · Accordion (anamnèse)</div>
+    <div class="card" style="max-width:600px;padding:0 18px">
+      <div class="accordion-item open">
+        <button class="accordion-trigger" onclick="this.parentElement.classList.toggle('open')">
+          <span>Le véhicule démarre-t-il ? <span class="badge badge-accent" style="margin-left:8px">REQUIS</span></span>
+          <svg class="accordion-chevron icon icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="accordion-content">
+          <label class="row items-center gap-2 mb-2"><input type="radio" name="dem"> Oui, il démarre</label>
+          <label class="row items-center gap-2"><input type="radio" name="dem"> Non, il ne démarre pas</label>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <button class="accordion-trigger" onclick="this.parentElement.classList.toggle('open')">
+          <span>Chronologie</span>
+          <svg class="accordion-chevron icon icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="accordion-content">Depuis quand la panne est-elle présente ?</div>
+      </div>
+      <div class="accordion-item">
+        <button class="accordion-trigger" onclick="this.parentElement.classList.toggle('open')">
+          <span>Symptômes observés</span>
+          <svg class="accordion-chevron icon icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="accordion-content">Perte de puissance, démarrage difficile, vibrations…</div>
+      </div>
+      <div class="accordion-item">
+        <button class="accordion-trigger" onclick="this.parentElement.classList.toggle('open')">
+          <span>Analyse acoustique</span>
+          <svg class="accordion-chevron icon icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="accordion-content">Enregistrer le son moteur ou décrire le bruit.</div>
+      </div>
+    </div>
+  </section>
+
+</body>
+</html>

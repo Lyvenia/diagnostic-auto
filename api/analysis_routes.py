@@ -41,17 +41,27 @@ def api_decode_vin():
 def api_analyze():
     data = request.get_json() or {}
     vin = data.get("vin", "")
-    dtc_codes = data.get("dtc_codes", [])
-    realtime = data.get("realtime", {})
-    kilometrage = int(data.get("kilometrage", 0))
+    dtc_codes = data.get("dtc_codes") or []
+    realtime = data.get("realtime") or {}
+    try:
+        kilometrage = int(data.get("kilometrage") or 0)
+    except (TypeError, ValueError):
+        kilometrage = 0
 
     if not vin:
         return jsonify({"error": "VIN manquant"}), 400
 
-    historique  = fleet.get_history(vin)[:3]  if vin else []
-    reparations = fleet.get_repairs(vin)[:10] if vin else []
-    result = analyze_dtc(vin, dtc_codes, realtime, kilometrage, historique=historique, reparations=reparations)
-    return jsonify(result)
+    _t0 = _t.time()
+    try:
+        historique  = fleet.get_history(vin)[:3]  if vin else []
+        reparations = fleet.get_repairs(vin)[:10] if vin else []
+        result = analyze_dtc(vin, dtc_codes, realtime, kilometrage,
+                             historique=historique, reparations=reparations)
+        _log(f"[analyze] ✓ {_t.time()-_t0:.1f}s VIN={vin!r}")
+        return jsonify(result)
+    except Exception as exc:
+        _log(f"[analyze] ✗ CRASH {_t.time()-_t0:.1f}s : {exc}\n{_tb.format_exc()}")
+        return jsonify({"error": str(exc)}), 500
 
 
 @bp.route("/api/analyze-session", methods=["POST"])
@@ -74,8 +84,11 @@ def api_analyze_full():
     """Analyse complète : DTC + sessions + anamnèse + freeze frame + historique flotte."""
     data = request.get_json() or {}
     vin = data.get("vin", "")
-    dtc_codes = data.get("dtc_codes", [])
-    km = int(data.get("kilometrage", 0))
+    dtc_codes = data.get("dtc_codes") or []
+    try:
+        km = int(data.get("kilometrage") or 0)
+    except (TypeError, ValueError):
+        km = 0
     session_ralenti = data.get("session_ralenti") or None
     session_roulant = data.get("session_roulant") or None
     anamnese        = data.get("anamnese") or None
@@ -87,12 +100,14 @@ def api_analyze_full():
         return jsonify({"error": "VIN ou informations véhicule manquants"}), 400
 
     _log(f"[analyze-full] VIN={vin!r} anamnese={bool(anamnese)} vehicle_manual={bool(vehicle_manual)} dtc={dtc_codes}")
+    _t0 = _t.time()
 
     # Enrichissement automatique depuis la flotte
     historique  = fleet.get_history(vin)[:5]  if vin else []
     reparations = fleet.get_repairs(vin)[:10] if vin else []
 
     try:
+        _log(f"[analyze-full] → appel analyze_full_diagnostic (Lyvenia)")
         result = analyze_full_diagnostic(
             vin, dtc_codes, km,
             session_ralenti, session_roulant,
@@ -103,8 +118,13 @@ def api_analyze_full():
             reparations=reparations,
             vehicle_manual=vehicle_manual,
         )
+        elapsed = _t.time() - _t0
+        has_err = bool(result.get("error"))
+        _log(f"[analyze-full] ← terminé en {elapsed:.1f}s error={has_err} analyses={len(result.get('analyse', []))}")
         return jsonify(result)
     except Exception as exc:
+        elapsed = _t.time() - _t0
+        _log(f"[analyze-full] ✗ CRASH après {elapsed:.1f}s : {exc}\n{_tb.format_exc()}")
         return jsonify({"error": str(exc)}), 500
 
 

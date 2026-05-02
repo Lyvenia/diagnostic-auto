@@ -1,0 +1,761 @@
+/* ══════════════════════════════════════════════════════════════════
+   RODIA — Nouvelle direction visuelle (Phase 1)
+   ══════════════════════════════════════════════════════════════════
+   Inspiration : encadré "app.rodia.lyvenia.com" du site Lyvenia.
+   Light mode (crème + dark green + terracotta) en thème principal,
+   tokens dark préparés pour Option C (toggle ultérieur).
+
+   Ce fichier ne remplace PAS style.css tant que index.html ne le
+   référence pas. Pour tester : ouvrir frontend/preview.html.
+   ══════════════════════════════════════════════════════════════════ */
+
+
+/* ══ 1. TOKENS — LIGHT (par défaut) ══════════════════════════════════ */
+:root {
+  /* Surfaces */
+  --bg-base:        #f5efe8;       /* fond app — crème */
+  --bg-surface:     #ffffff;       /* cards, main content */
+  --bg-sidebar:     #ede5db;       /* sidebar — crème un poil + sombre */
+  --bg-elevated:    #faf6f0;       /* hover, popover, drawer header */
+  --bg-subtle:      #efe8de;       /* zones de second plan */
+
+  /* Texte */
+  --text-primary:   #0e1f15;       /* quasi-noir vert — titres, KPI */
+  --text-body:      #2e3d33;       /* texte courant */
+  --text-muted:     #6b7a70;       /* secondaire */
+  --text-label:     #8a8276;       /* small caps (warm gray) */
+  --text-on-ink:    #f5efe8;       /* texte sur fond ink */
+  --text-on-accent: #ffffff;       /* texte sur fond accent */
+
+  /* Accents */
+  --accent:         #a85c4a;       /* terracotta — CTA, data, hover */
+  --accent-hover:   #934d3d;
+  --accent-soft:    #e8b4a4;       /* rose saumon Lyvenia historique */
+  --accent-bg:      #f5e0d6;       /* wash terracotta très clair */
+
+  /* Sémantique */
+  --success:        #4a7c4e;
+  --success-bg:     #e0ecdf;
+  --warning:        #c08543;
+  --warning-bg:     #f4d9a8;       /* chamois — comme le badge P0261 */
+  --danger:         #9a4632;
+  --danger-bg:      #f0d3c9;
+  --info:           #4a6b7c;
+  --info-bg:        #d8e4ec;
+
+  /* Vert foncé Lyvenia — réservé CTA + sidebar item actif */
+  --ink:            #0e1f15;
+  --ink-hover:      #1a2e22;
+
+  /* Traits */
+  --border:         #e3dccf;
+  --border-strong:  #c9bfae;
+  --border-input:   #d8d0c0;
+  --ring:           rgba(168, 92, 74, .35); /* focus visible */
+
+  /* Grille de fond — texture subtile (style Lyvenia) */
+  --grid-line:      rgba(14, 31, 21, .055);
+  --grid-size:      56px;
+
+  /* Radius */
+  --r-sm:           6px;
+  --r-md:           10px;
+  --r-lg:           14px;
+  --r-pill:         999px;
+
+  /* Espacements (référence — pas exposés en var, on utilise des valeurs directes) */
+
+  /* Ombres — minimales, pas de glass */
+  --shadow-xs:      0 1px 2px rgba(14, 31, 21, .05);
+  --shadow-sm:      0 1px 2px rgba(14, 31, 21, .06), 0 0 0 1px rgba(14, 31, 21, .04);
+  --shadow-md:      0 4px 12px rgba(14, 31, 21, .08), 0 0 0 1px rgba(14, 31, 21, .04);
+  --shadow-modal:   0 24px 64px rgba(14, 31, 21, .14), 0 2px 8px rgba(14, 31, 21, .06);
+
+  /* Transitions */
+  --t-fast:         120ms cubic-bezier(.2, 0, 0, 1);
+  --t-base:         180ms cubic-bezier(.2, 0, 0, 1);
+  --t-slow:         260ms cubic-bezier(.2, 0, 0, 1);
+
+  /* Typo */
+  --font-sans:      'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono:      'JetBrains Mono', 'Consolas', 'SF Mono', ui-monospace, monospace;
+
+  /* Layout */
+  --topbar-h:       56px;
+  --sidebar-w:      240px;
+  --drawer-w:       480px;
+}
+
+
+/* ══ 2. TOKENS — DARK (Option C — calé sur la maquette Lyvenia dark) ═ */
+[data-theme="dark"] {
+  /* Surfaces — vert profond, encadré légèrement plus clair */
+  --bg-base:        #0a140a;       /* fond le plus sombre — accueille la grille */
+  --bg-surface:     #0f1d10;       /* "encadré" du screenshot */
+  --bg-sidebar:     #0c180c;       /* sidebar — un poil + sombre que le main */
+  --bg-elevated:    #142a16;       /* hover, popover */
+  --bg-subtle:      #0c1a0d;
+
+  /* Texte */
+  --text-primary:   #f5efe8;       /* crème — devient le titre */
+  --text-body:      #d8d0c0;
+  --text-muted:     #8a9a8e;
+  --text-label:     #6f8076;
+  --text-on-ink:    #0e1f15;       /* texte sombre sur fond clair (cream) */
+  --text-on-accent: #1a0e0a;       /* texte sombre sur saumon — comme le screenshot */
+
+  /* Accent — saumon Lyvenia historique. Sur fond sombre il pop comme dans la maquette */
+  --accent:         #e8b4a4;       /* saumon clair — exactement le rose du screenshot */
+  --accent-hover:   #f0c4b6;
+  --accent-soft:    #c47057;       /* la version brune devient l'accent secondaire */
+  --accent-bg:      rgba(232, 180, 164, .14);
+
+  /* Sémantique — calmées sur fond sombre */
+  --success:        #6aa86e;
+  --success-bg:     rgba(106, 168, 110, .14);
+  --warning:        #d59a5a;
+  --warning-bg:     rgba(213, 154, 90, .18);
+  --danger:         #d56850;
+  --danger-bg:      rgba(213, 104, 80, .16);
+  --info:           #7ba0b5;
+  --info-bg:        rgba(123, 160, 181, .14);
+
+  /* Ink — devient cream en dark mode (pour btn-secondary inverse) */
+  --ink:            #f5efe8;
+  --ink-hover:      #ffffff;
+
+  /* Traits */
+  --border:         #1f2f24;
+  --border-strong:  #2e423a;
+  --border-input:   #1f2f24;
+  --ring:           rgba(232, 180, 164, .35);
+
+  /* Grille de fond — lignes claires sur fond sombre */
+  --grid-line:      rgba(232, 180, 164, .045);
+  --grid-size:      56px;
+
+  /* Ombres — atténuées en dark, surtout pour cards sur fond grille */
+  --shadow-xs:      0 1px 2px rgba(0, 0, 0, .3);
+  --shadow-sm:      0 1px 2px rgba(0, 0, 0, .4), 0 0 0 1px rgba(232, 180, 164, .04);
+  --shadow-md:      0 4px 16px rgba(0, 0, 0, .5), 0 0 0 1px rgba(232, 180, 164, .05);
+  --shadow-modal:   0 24px 64px rgba(0, 0, 0, .65);
+}
+
+
+/* ══ 3. RESET MINIMAL ═══════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01'; /* Inter alts */
+  color: var(--text-body);
+  background: var(--bg-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  position: relative;
+  min-height: 100vh;
+}
+/* Grille de fond — texture subtile (style Lyvenia).
+   Position fixed pour rester en arrière-plan au scroll, z-index négatif
+   pour passer DERRIÈRE le contenu mais devant le body. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(to right,  var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  pointer-events: none;
+  z-index: 0;
+}
+/* Le reste du contenu doit être au-dessus de la grille */
+body > * { position: relative; z-index: 1; }
+img, svg, video { display: block; max-width: 100%; }
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+}
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .5; }
+a { color: inherit; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+
+/* ══ 4. TYPOGRAPHIE ═══════════════════════════════════════════════════ */
+.t-display {
+  font-size: 2.4rem;
+  font-weight: 600;
+  letter-spacing: -.02em;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+.t-h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+.t-h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+.t-body { font-size: .95rem; line-height: 1.55; color: var(--text-body); }
+.t-body-sm { font-size: .85rem; line-height: 1.5; color: var(--text-body); }
+.t-muted { color: var(--text-muted); }
+.t-mono { font-family: var(--font-mono); font-size: .9em; }
+
+.t-label {
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+.t-kpi {
+  font-size: 2.4rem;
+  font-weight: 600;
+  letter-spacing: -.03em;
+  line-height: 1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.t-kpi-delta {
+  font-size: .78rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.t-kpi-delta.up   { color: var(--success); }
+.t-kpi-delta.down { color: var(--danger); }
+
+
+/* ══ 5. ICÔNES (slot Lucide — sprite à venir Phase 2) ════════════════ */
+.icon { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; fill: none;
+        stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.icon-sm { width: 14px; height: 14px; }
+.icon-lg { width: 22px; height: 22px; }
+.icon-xl { width: 28px; height: 28px; }
+
+
+/* ══ 6. BOUTONS ══════════════════════════════════════════════════════ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  height: 36px;
+  font-size: .88rem;
+  font-weight: 500;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  transition: background-color var(--t-fast), border-color var(--t-fast),
+              color var(--t-fast), box-shadow var(--t-fast);
+  white-space: nowrap;
+  user-select: none;
+}
+.btn:focus-visible { outline: 3px solid var(--ring); outline-offset: 1px; }
+
+/* Primary — terracotta solide (CTA principal) */
+.btn-primary {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+/* Secondary — fond ink (vert foncé du screenshot, "Réserver une démo") */
+.btn-secondary {
+  background: var(--ink);
+  color: var(--text-on-ink);
+}
+.btn-secondary:hover:not(:disabled) { background: var(--ink-hover); }
+
+/* Ghost — borderless, pour actions tertiaires */
+.btn-ghost {
+  background: transparent;
+  color: var(--text-body);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--bg-subtle); }
+
+/* Outline — alternative au ghost avec bordure */
+.btn-outline {
+  background: var(--bg-surface);
+  color: var(--text-body);
+  border-color: var(--border-strong);
+}
+.btn-outline:hover:not(:disabled) {
+  background: var(--bg-elevated);
+  border-color: var(--text-muted);
+}
+
+/* Danger — actions destructives */
+.btn-danger {
+  background: var(--danger);
+  color: var(--text-on-accent);
+}
+.btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* Tailles */
+.btn-sm { height: 28px; padding: 0 10px; font-size: .8rem; }
+.btn-lg { height: 44px; padding: 0 20px; font-size: .95rem; }
+
+/* Icon-only */
+.btn-icon {
+  width: 36px; height: 36px; padding: 0;
+}
+.btn-icon.btn-sm { width: 28px; height: 28px; }
+
+
+/* ══ 7. INPUTS ════════════════════════════════════════════════════════ */
+.input, .select, .textarea {
+  display: block; width: 100%;
+  padding: 0 12px;
+  height: 36px;
+  font-size: .9rem;
+  color: var(--text-body);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-sm);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.textarea { height: auto; min-height: 80px; padding: 10px 12px; resize: vertical; line-height: 1.5; }
+.input::placeholder, .textarea::placeholder { color: var(--text-muted); }
+.input:hover, .select:hover, .textarea:hover { border-color: var(--text-muted); }
+.input:focus, .select:focus, .textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.input-sm { height: 28px; font-size: .82rem; padding: 0 10px; }
+
+/* Label de champ */
+.field-label {
+  display: block; font-size: .82rem; font-weight: 500;
+  color: var(--text-body); margin-bottom: 6px;
+}
+.field-hint {
+  display: block; font-size: .76rem; color: var(--text-muted); margin-top: 4px;
+}
+
+/* Recherche avec icône */
+.search {
+  position: relative;
+}
+.search > .icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); pointer-events: none;
+}
+.search > .input {
+  padding-left: 34px;
+}
+
+
+/* ══ 8. CARD ══════════════════════════════════════════════════════════ */
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px 18px;
+}
+.card-lg { padding: 24px; }
+.card-elev { box-shadow: var(--shadow-sm); }
+.card-title {
+  font-size: 1rem; font-weight: 600; color: var(--text-primary);
+  margin-bottom: 12px;
+}
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+
+/* ══ 9. KPI CARD (style screenshot Lyvenia) ═══════════════════════════ */
+.kpi {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.kpi-label {
+  font-size: .68rem; font-weight: 600; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--text-label);
+}
+.kpi-value {
+  font-size: 2rem; font-weight: 600; letter-spacing: -.02em;
+  line-height: 1.1; color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.kpi-delta {
+  font-size: .78rem; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.kpi-delta.up   { color: var(--success); }
+.kpi-delta.down { color: var(--danger); }
+.kpi-delta.neutral { color: var(--text-muted); }
+
+
+/* ══ 10. BADGE ════════════════════════════════════════════════════════ */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  font-size: .72rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: .02em;
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+}
+.badge-warning { background: var(--warning-bg); color: var(--warning); }
+.badge-danger  { background: var(--danger-bg);  color: var(--danger);  }
+.badge-success { background: var(--success-bg); color: var(--success); }
+.badge-info    { background: var(--info-bg);    color: var(--info);    }
+.badge-accent  { background: var(--accent-bg);  color: var(--accent);  }
+.badge-neutral { background: var(--bg-subtle);  color: var(--text-muted); }
+
+/* Badge "pill" (urgent, à surveiller, ok) — small caps */
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  font-size: .68rem; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase;
+  border-radius: var(--r-pill);
+}
+.pill-urgent { background: var(--danger-bg);  color: var(--danger); }
+.pill-warn   { background: var(--warning-bg); color: var(--warning); }
+.pill-ok     { background: var(--success-bg); color: var(--success); }
+
+
+/* ══ 11. STATUS DOT (pastille colorée) ════════════════════════════════ */
+.dot {
+  width: 8px; height: 8px; border-radius: var(--r-pill);
+  display: inline-block; flex-shrink: 0;
+}
+.dot-success { background: var(--success); }
+.dot-warning { background: var(--warning); }
+.dot-danger  { background: var(--danger); }
+.dot-muted   { background: var(--text-muted); }
+.dot-pulse {
+  position: relative;
+}
+.dot-pulse::after {
+  content: '';
+  position: absolute; inset: -3px;
+  border-radius: var(--r-pill);
+  border: 2px solid currentColor;
+  opacity: 0;
+  animation: pulse 1.6s ease-out infinite;
+}
+@keyframes pulse {
+  0%   { transform: scale(.8); opacity: .8; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+
+/* ══ 12. TOPBAR ═══════════════════════════════════════════════════════ */
+.topbar {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: space-between;
+  height: var(--topbar-h);
+  padding: 0 20px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-brand {
+  display: flex; align-items: center; gap: 10px;
+  font-size: .98rem; font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -.005em;
+}
+.topbar-logo {
+  width: 24px; height: 24px;
+  background: var(--ink);
+  border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+}
+.topbar-logo > .dot { background: var(--accent); width: 8px; height: 8px; }
+.topbar-actions {
+  display: flex; align-items: center; gap: 8px;
+}
+.connection-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  font-size: .78rem; font-weight: 500;
+  color: var(--text-body);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+}
+
+
+/* ══ 13. SIDEBAR ══════════════════════════════════════════════════════ */
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  padding: 14px 12px;
+  display: flex; flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+.sidebar-section {
+  margin-top: 14px;
+}
+.sidebar-section:first-of-type { margin-top: 0; }
+.sidebar-section-title {
+  font-size: .65rem; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-label);
+  padding: 6px 10px 4px;
+}
+.sidebar-link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px;
+  font-size: .88rem;
+  font-weight: 500;
+  color: var(--text-body);
+  border-radius: var(--r-sm);
+  transition: background-color var(--t-fast), color var(--t-fast);
+}
+.sidebar-link:hover {
+  background: var(--bg-elevated);
+  text-decoration: none;
+}
+.sidebar-link.active {
+  background: var(--ink);
+  color: var(--text-on-ink);
+}
+.sidebar-link .icon {
+  color: currentColor;
+  opacity: .85;
+}
+.sidebar-spacer { flex: 1; }
+.sidebar-footer {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+
+/* ══ 14. LAYOUT APP ═══════════════════════════════════════════════════ */
+.app-shell {
+  display: flex;
+  min-height: calc(100vh - var(--topbar-h));
+}
+.main {
+  flex: 1; min-width: 0;
+  padding: 28px 32px;
+  overflow-x: hidden;
+}
+.main-header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 24px;
+  gap: 16px;
+}
+
+
+/* ══ 15. STEPPER (wizard horizontal) ═════════════════════════════════ */
+.stepper {
+  display: flex; align-items: center; gap: 0;
+  padding: 14px 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.step {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  flex-shrink: 0;
+}
+.step-bullet {
+  width: 24px; height: 24px;
+  border-radius: var(--r-pill);
+  background: var(--bg-subtle);
+  border: 1.5px solid var(--border-strong);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .75rem; font-weight: 600;
+  color: var(--text-muted);
+}
+.step.done .step-bullet {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+.step.active .step-bullet {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+}
+.step-label {
+  font-size: .76rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.step.active .step-label { color: var(--text-primary); font-weight: 600; }
+.step.done .step-label { color: var(--text-body); }
+.step-bar {
+  flex: 1; height: 1.5px;
+  background: var(--border-strong);
+  margin: 0 8px;
+  align-self: flex-start; margin-top: 12px;
+}
+.step.done + .step-bar,
+.step-bar.done { background: var(--success); }
+
+
+/* ══ 16. ACCORDION ═══════════════════════════════════════════════════ */
+.accordion-item {
+  border-bottom: 1px solid var(--border);
+}
+.accordion-item:last-child { border-bottom: 0; }
+.accordion-trigger {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  text-align: left;
+  font-size: .92rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.accordion-trigger:hover { color: var(--accent); }
+.accordion-chevron {
+  color: var(--text-muted);
+  transition: transform var(--t-base);
+}
+.accordion-item.open .accordion-chevron { transform: rotate(90deg); color: var(--accent); }
+.accordion-content {
+  padding: 0 0 16px;
+  display: none;
+}
+.accordion-item.open .accordion-content { display: block; }
+
+
+/* ══ 17. LIST ITEM (style row de fleet list) ═════════════════════════ */
+.list {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.list-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background-color var(--t-fast);
+  cursor: pointer;
+}
+.list-row:last-child { border-bottom: 0; }
+.list-row:hover { background: var(--bg-elevated); }
+.list-row.active { background: var(--accent-bg); }
+.list-row-main { flex: 1; min-width: 0; }
+.list-row-title {
+  font-size: .92rem; font-weight: 500; color: var(--text-primary);
+  display: flex; align-items: center; gap: 8px;
+}
+.list-row-meta {
+  font-size: .8rem; color: var(--text-muted);
+  margin-top: 2px;
+}
+.list-row-aside {
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0;
+}
+
+
+/* ══ 18. TABS textuels (filtres) ═════════════════════════════════════ */
+.tabs-text {
+  display: flex; gap: 4px;
+  padding: 4px;
+  background: var(--bg-subtle);
+  border-radius: var(--r-sm);
+  width: fit-content;
+}
+.tabs-text > button {
+  padding: 5px 12px;
+  font-size: .82rem; font-weight: 500;
+  color: var(--text-muted);
+  border-radius: var(--r-sm);
+  transition: background-color var(--t-fast), color var(--t-fast);
+}
+.tabs-text > button:hover { color: var(--text-body); }
+.tabs-text > button.active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+
+/* ══ 19. DRAWER (latéral, pour détail véhicule plus tard) ════════════ */
+.drawer-overlay {
+  position: fixed; inset: 0;
+  background: rgba(14, 31, 21, .35);
+  z-index: 90;
+}
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: var(--drawer-w); max-width: 95vw;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-modal);
+  z-index: 91;
+  display: flex; flex-direction: column;
+}
+.drawer-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.drawer-body { flex: 1; overflow-y: auto; padding: 20px; }
+
+
+/* ══ 20. MODAL (réservé aux confirmations destructives) ══════════════ */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(14, 31, 21, .42);
+  z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal {
+  width: 100%; max-width: 480px;
+  background: var(--bg-surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-modal);
+  padding: 24px;
+}
+.modal-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  margin-top: 20px;
+}
+
+
+/* ══ 21. UTILITAIRES ═════════════════════════════════════════════════ */
+.row    { display: flex; }
+.col    { display: flex; flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-1  { gap: 4px;  }
+.gap-2  { gap: 8px;  }
+.gap-3  { gap: 12px; }
+.gap-4  { gap: 16px; }
+.gap-6  { gap: 24px; }
+.flex-1 { flex: 1; }
+.grid   { display: grid; }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-4 { grid-template-columns: repeat(4, 1fr); }
+.mt-2 { margin-top: 8px; }
+.mt-4 { margin-top: 16px; }
+.mt-6 { margin-top: 24px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-4 { margin-bottom: 16px; }
+.text-right { text-align: right; }
+.hidden { display: none !important; }

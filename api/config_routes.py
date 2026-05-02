@@ -51,50 +51,51 @@ def api_set_technicians():
 
 @bp.route("/api/dashboard", methods=["GET"])
 def api_dashboard():
-    from fleet.maintenance import get_fleet_summary
-    vehicles = fleet.get_all_vehicles()
-    # Health scores
-    health = {}
-    for v in vehicles:
-        vin = v.get("vin", "")
-        if vin:
-            health[vin] = fleet.get_health_score(vin)
-    # Average score
-    scores = [h["score"] for h in health.values() if "score" in h]
-    avg_score = round(sum(scores) / len(scores)) if scores else 0
-    # Recent diagnostics (last 10 across all vehicles)
-    all_diags = []
-    for v in vehicles:
-        vin = v.get("vin", "")
-        label = f"{v.get('marque','')} {v.get('modele','')}".strip() or vin
-        for entry in v.get("historique", [])[:5]:
-            all_diags.append({
-                "vin": vin,
-                "label": label,
-                "date": entry.get("date", ""),
-                "date_affichage": entry.get("date_affichage", ""),
-                "kilometrage": entry.get("kilometrage", 0),
-                "dtc_codes": entry.get("dtc_codes", []),
-                "statut": entry.get("statut", "OK"),
-                "analyse_ia": entry.get("analyse_ia", {}),
-            })
-    all_diags.sort(key=lambda x: x["date"], reverse=True)
-    recent_diags = all_diags[:10]
-    # Maintenance summary
-    vins_km = {}
-    for v in vehicles:
-        vin = v.get("vin", "")
-        if vin:
+    try:
+        from fleet.maintenance import get_fleet_summary
+        vehicles = fleet.get_all_vehicles()
+        # Scores santé : batch pour éviter N acquisitions de lock
+        health = fleet.get_all_health_scores()
+        scores = [h["score"] for h in health.values() if "score" in h]
+        avg_score = round(sum(scores) / len(scores)) if scores else 0
+        # Diagnostics récents (10 derniers toutes flottes confondues)
+        all_diags = []
+        vins_km = {}
+        for v in vehicles:
+            vin = v.get("vin", "")
+            if not vin:
+                continue
+            label = f"{v.get('marque','')} {v.get('modele','')}".strip() or vin
             hist = v.get("historique", [])
             vins_km[vin] = hist[0].get("kilometrage", 0) if hist else 0
-    maint_summary = get_fleet_summary(vins_km)
-    return jsonify({
-        "avg_score": avg_score,
-        "health": health,
-        "vehicles": [{"vin": v.get("vin"), "marque": v.get("marque"), "modele": v.get("modele"), "annee": v.get("annee")} for v in vehicles],
-        "recent_diags": recent_diags,
-        "maintenance_summary": maint_summary,
-    })
+            for entry in hist[:5]:
+                all_diags.append({
+                    "vin": vin,
+                    "label": label,
+                    "date": entry.get("date", ""),
+                    "date_affichage": entry.get("date_affichage", ""),
+                    "kilometrage": entry.get("kilometrage", 0),
+                    "dtc_codes": entry.get("dtc_codes", []),
+                    "statut": entry.get("statut", "OK"),
+                    "analyse_ia": entry.get("analyse_ia", {}),
+                })
+        all_diags.sort(key=lambda x: x["date"], reverse=True)
+        maint_summary = get_fleet_summary(vins_km)
+        return jsonify({
+            "avg_score": avg_score,
+            "health": health,
+            "vehicles": [{"vin": v.get("vin"), "marque": v.get("marque"), "modele": v.get("modele"), "annee": v.get("annee")} for v in vehicles],
+            "recent_diags": all_diags[:10],
+            "maintenance_summary": maint_summary,
+        })
+    except Exception as exc:
+        import traceback
+        try:
+            with open(data_path("DiagnosticAuto_error.log"), "a", encoding="utf-8") as f:
+                f.write(f"[{_t.strftime('%H:%M:%S')}] [dashboard] ✗ {exc}\n{traceback.format_exc()}\n")
+        except Exception:
+            pass
+        return jsonify({"error": f"Tableau de bord indisponible : {exc}"}), 500
 
 
 @bp.route("/api/scan-ecus", methods=["POST"])

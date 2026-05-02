@@ -176,6 +176,8 @@ class FleetManager:
                 "technicien": diagnostic.get("technicien", ""),
                 "session_ralenti": diagnostic.get("session_ralenti"),
                 "session_roulant": diagnostic.get("session_roulant"),
+                # Type de diagnostic : "panne" (curatif) ou "controle" (bilan préventif)
+                "type": diagnostic.get("type", "panne"),
                 # Suivi de panne
                 "statut_suivi": "ouvert",
                 # Données enrichies depuis l'analyse IA

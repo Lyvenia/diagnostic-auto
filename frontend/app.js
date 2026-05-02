@@ -46,19 +46,33 @@ async function api(method, url, body = null, timeoutMs = 120000) {
     return res.json();
   } catch (e) {
     clearTimeout(timer);
-    if (e.name === 'AbortError') throw new Error('Délai dépassé — l\'analyse IA prend trop de temps, réessayez.');
+    console.error(`[api] ${method} ${url} →`, e.name, e.message, e);
+    // WebView2 peut renvoyer "Failed to fetch" au lieu de "AbortError" quand le timeout se déclenche
+    if (e.name === 'AbortError' || controller.signal.aborted) throw new Error('Délai dépassé — l\'analyse IA prend trop de temps, réessayez.');
     if (e.message === 'Failed to fetch') throw new Error('Impossible de contacter le serveur. Vérifiez que l\'application est bien lancée.');
     throw e;
   }
 }
 
-async function saveFile(url, body) {
+async function saveFile(url, body, timeoutMs = 120000) {
   const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
   if (body !== undefined) opts.body = JSON.stringify(body);
-  const res = await fetch(url, opts);
-  const data = await res.json().catch(() => ({ error: res.statusText }));
-  if (!res.ok || !data.success) throw new Error(data.error || 'Erreur export');
-  return data; // { success, filename, path }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  opts.signal = controller.signal;
+  try {
+    const res = await fetch(url, opts);
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    if (!res.ok || !data.success) throw new Error(data.error || 'Erreur export');
+    return data; // { success, filename, path }
+  } catch (e) {
+    clearTimeout(timer);
+    console.error(`[saveFile] POST ${url} →`, e.name, e.message, e);
+    if (e.name === 'AbortError' || controller.signal.aborted) throw new Error('Délai dépassé — la génération du fichier prend trop de temps, réessayez.');
+    if (e.message === 'Failed to fetch') throw new Error('Connexion au serveur interrompue pendant la génération. Réessayez dans quelques secondes.');
+    throw e;
+  }
 }
 
 async function openExportsFolder() {
@@ -201,6 +215,11 @@ async function loadFleet() {
     }
   } catch (e) {
     console.error('Fleet load error:', e);
+    // Affiche l'erreur à l'utilisateur pour éviter une liste vide trompeuse.
+    const listEl = document.getElementById('fleetList');
+    if (listEl) {
+      listEl.innerHTML = `<div class="empty-state" style="color:var(--danger)">⚠ Flotte indisponible : ${escHtml(e.message || 'erreur inconnue')}<br><button class="btn-secondary" onclick="loadFleet()" style="margin-top:12px">Réessayer</button></div>`;
+    }
   }
 }
 
@@ -439,7 +458,8 @@ async function renderCockpit() {
     html += `<div class="cockpit-hint">Cliquez sur un véhicule dans la liste pour ouvrir son dossier</div></div>`;
     el.innerHTML = html;
   } catch(e) {
-    el.innerHTML = `<div class="cockpit-wrap"><div class="empty-state">Tableau de bord indisponible</div></div>`;
+    console.error('renderCockpit error', e);
+    el.innerHTML = `<div class="cockpit-wrap"><div class="empty-state" style="color:var(--danger)">⚠ Tableau de bord indisponible : ${escHtml(e.message || 'erreur inconnue')}<br><button class="btn-secondary" onclick="renderCockpit()" style="margin-top:12px">Réessayer</button></div></div>`;
   }
 }
 
@@ -750,9 +770,21 @@ function applyManualVin() {
   toast(`Véhicule enregistré : ${label}`, 'success', 3000);
 }
 
-async function startDiagnostic() {
+async function startDiagnostic(opts) {
+  // Type de diagnostic : "panne" (défaut) ou "controle" (bilan santé)
+  // Lu soit depuis opts.type, soit depuis l'attribut data-diag-type du bouton
+  let diagType = (opts && opts.type) || 'panne';
+  if (typeof opts === 'object' && opts && opts.target) {
+    // Cas où l'event handler passe l'événement directement
+    const btn = opts.target.closest && opts.target.closest('[data-diag-type]');
+    if (btn) diagType = btn.dataset.diagType || diagType;
+  }
+  state.currentDiag.type = diagType;
+
   showStep('stepReading');
-  document.getElementById('readingMsg').textContent = 'Connexion à l\'adaptateur OBD2…';
+  document.getElementById('readingMsg').textContent = diagType === 'controle'
+    ? 'Connexion à l\'adaptateur OBD2 (bilan de santé)…'
+    : 'Connexion à l\'adaptateur OBD2…';
 
   try {
     const conn = await api('POST', '/api/connect');
@@ -1225,9 +1257,11 @@ async function saveDiagnostic() {
 
   openTechModal(async (technicien) => {
     const statut = analyse_ia.statut_global || 'OK';
+    const diagType = state.currentDiag.type || 'panne';
     try {
       const res = await api('POST', '/api/fleet/diagnostic', {
         vin, dtc_codes, donnees_temps_reel: realtime, analyse_ia, kilometrage, statut, technicien,
+        type: diagType,
         session_ralenti: state.session_ralenti || null,
         session_roulant: state.session_roulant || null,
       });
@@ -2484,7 +2518,7 @@ function applyTheme(theme) {
 }
 
 function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
   applyTheme(current === 'dark' ? 'light' : 'dark');
 }
 
@@ -2536,9 +2570,7 @@ function switchTab(name) {
     panel.classList.toggle('active',  panel.id === `tab-${name}`);
   });
 
-  // Masquer la sidebar gauche sur l'onglet Flotte (redondante)
-  const globalSidebar = document.querySelector('.layout > .sidebar');
-  if (globalSidebar) globalSidebar.style.display = name === 'historique' ? 'none' : '';
+  // (Mini-flotte sidebar masquée en CSS — sidebar = nav pure depuis Phase 3)
 
   // Nouveau layout deux colonnes pour la flotte
   if (name === 'historique') {
@@ -2886,17 +2918,441 @@ async function loadDashboard() {
   }
   try {
     _dashData = await api('GET', '/api/dashboard');
+    renderDashboardHero(_dashData);
+    renderDashboardKPI(_dashData);
     renderDashboardHealth(_dashData);
     renderDashboardDiags(_dashData.recent_diags || []);
+    renderDashboardActivity(_dashData);
+    renderDashboardChart(_dashData);
     renderDashboardMaintAlerts(_dashData.maintenance_summary || {});
     populateDashVehicleSelect(_dashData.vehicles || []);
+    // Index de recherche à jour avec les données fraîches
+    if (typeof refreshSearchIndex === 'function') refreshSearchIndex();
     // Auto-charge la maintenance si 1 seul véhicule
     if ((_dashData.vehicles || []).length === 1) {
       renderDashboardMaintenance(_dashData.vehicles[0].vin);
     }
   } catch (e) {
     console.error('loadDashboard error', e);
+    const grid = document.getElementById('dashHealthGrid');
+    if (grid) {
+      grid.innerHTML = `<div class="dash-empty" style="color:var(--danger)">⚠ Tableau de bord indisponible : ${escHtml(e.message || 'erreur inconnue')}<br><button class="btn-secondary" onclick="loadDashboard()" style="margin-top:12px">Réessayer</button></div>`;
+    }
   }
+}
+
+/**
+ * Hero header personnalisé : "Bonjour [user]" + sous-titre dynamique
+ *  + bandeau d'alerte critique si une panne urgente est détectée.
+ */
+function renderDashboardHero(data) {
+  const greetEl = document.getElementById('dashGreeting');
+  const subEl   = document.getElementById('dashSubtitle');
+  if (!greetEl) return;
+
+  // Heure → salutation
+  const h = new Date().getHours();
+  const hello = h < 5 ? 'Bonsoir' : h < 18 ? 'Bonjour' : 'Bonsoir';
+
+  // Nom : préférer le nom du garage, sinon localStorage, sinon générique
+  let userName = (data.garage && data.garage.nom) || localStorage.getItem('rodiaUserName') || '';
+  // Si nom long, on prend juste le premier mot
+  if (userName.length > 24) userName = userName.split(/\s+/)[0];
+  greetEl.textContent = userName ? `${hello} ${userName}` : `${hello}`;
+
+  // Sous-titre dynamique : agrégation alertes
+  const vehicles = data.vehicles || [];
+  const recentDiags = data.recent_diags || [];
+  const maint = data.maintenance_summary || {};
+
+  // Compte les diagnostics urgents (statut URGENT) sur les 7 derniers jours
+  const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const urgentDiags = recentDiags.filter(d => {
+    if ((d.statut || '').toUpperCase() !== 'URGENT') return false;
+    const t = Date.parse(d.date || d.date_iso || '') || 0;
+    return t >= oneWeekAgo;
+  });
+  const urgentMaint = (maint.urgent || 0);
+  const todayDate = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long'
+  });
+
+  let parts = [`<span style="text-transform:capitalize">${escHtml(todayDate)}</span>`];
+  if (urgentDiags.length) {
+    parts.push(`<strong>${urgentDiags.length} alerte${urgentDiags.length > 1 ? 's' : ''} urgente${urgentDiags.length > 1 ? 's' : ''}</strong>`);
+  }
+  if (urgentMaint) {
+    parts.push(`<strong>${urgentMaint} maintenance${urgentMaint > 1 ? 's' : ''} en retard</strong>`);
+  }
+  if (!urgentDiags.length && !urgentMaint && vehicles.length) {
+    parts.push(`<strong>${vehicles.length} véhicule${vehicles.length > 1 ? 's' : ''}</strong> en flotte · aucune alerte critique`);
+  }
+  subEl.innerHTML = parts.join('  ·  ');
+
+  // Bandeau d'alerte critique : prend le diagnostic urgent le plus récent
+  const banner = document.getElementById('dashCriticalAlert');
+  if (banner) {
+    if (urgentDiags.length > 0) {
+      const top = urgentDiags[0];
+      const veh = vehicles.find(v => v.vin === top.vin) || {};
+      const label = [veh.marque, veh.modele, top.code ? `· ${top.code}` : ''].filter(Boolean).join(' ') || top.vin;
+      const codes = (top.dtc_codes && top.dtc_codes.length) ? top.dtc_codes.slice(0, 3).join(', ') : 'Codes DTC critiques';
+      const titleEl = document.getElementById('dashCriticalAlertTitle');
+      const descEl  = document.getElementById('dashCriticalAlertDesc');
+      const ctaEl   = document.getElementById('dashCriticalAlertCta');
+      if (titleEl) titleEl.textContent = label;
+      if (descEl)  descEl.textContent = `${codes}  ·  intervention urgente recommandée`;
+      if (ctaEl) {
+        ctaEl.onclick = () => switchTab('historique');
+      }
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+  }
+}
+
+/* ── KPI cards : flotte / diags ce mois / alertes / score ──────── */
+function renderDashboardKPI(data) {
+  const vehicles    = data.vehicles || [];
+  const recentDiags = data.recent_diags || [];
+  const health      = data.health || {};
+  const maint       = data.maintenance_summary || {};
+
+  // 1. Flotte active : nombre + sparkline = nombre cumulé sur 7 derniers jours (proxy : tous les véh ajoutés progressivement)
+  setKpiText('kpiFleetValue', vehicles.length, ' véhicules');
+  setKpiTrend('kpiFleetTrend', vehicles.length > 0 ? +1 : 0, 'count');
+  // Sparkline : approximation d'évolution = barres croissantes vers le total actuel
+  renderSparkline('kpiFleetSpark', genFleetSpark(vehicles, 7));
+
+  // 2. Diagnostics ce mois
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+  const diagsThisMonth = recentDiags.filter(d => Date.parse(d.date || d.date_iso || '') >= startOfMonth);
+  const diagsLastMonth = recentDiags.filter(d => {
+    const t = Date.parse(d.date || d.date_iso || '');
+    return t >= lastMonthStart && t < startOfMonth;
+  });
+  setKpiText('kpiDiagsValue', diagsThisMonth.length);
+  const diagsDelta = diagsLastMonth.length > 0
+    ? Math.round(((diagsThisMonth.length - diagsLastMonth.length) / diagsLastMonth.length) * 100)
+    : (diagsThisMonth.length > 0 ? 100 : 0);
+  setKpiTrend('kpiDiagsTrend', diagsDelta, 'percent');
+  renderSparkline('kpiDiagsSpark', genDiagsSpark(recentDiags, 7));
+
+  // 3. Alertes urgentes : diagnostics URGENT cette semaine + maintenance dépassée
+  const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const urgentDiags = recentDiags.filter(d =>
+    (d.statut || '').toUpperCase() === 'URGENT' &&
+    Date.parse(d.date || d.date_iso || '') >= oneWeekAgo
+  );
+  const totalAlerts = urgentDiags.length + (maint.urgent || 0);
+  setKpiText('kpiAlertsValue', totalAlerts);
+  // trend : on inverse — moins d'alertes = vert
+  setKpiTrend('kpiAlertsTrend', totalAlerts === 0 ? -1 : (totalAlerts > 3 ? +1 : 0), 'count', /*invert*/ true);
+  renderSparkline('kpiAlertsSpark', genAlertsSpark(recentDiags, 7));
+
+  // 4. Score fiabilité moyen
+  const avg = data.avg_score ?? 0;
+  setKpiText('kpiScoreValue', avg > 0 ? avg : '--', '/100');
+  // Trend : comparer au score précédent (proxy : on n'a pas l'historique → estimation via dispersion)
+  const scores = vehicles.map(v => (health[v.vin] || {}).score).filter(s => typeof s === 'number');
+  const trend = scores.length > 1 ? Math.round((avg - 80)) : 0;
+  setKpiTrend('kpiScoreTrend', trend, 'pts');
+  renderSparkline('kpiScoreSpark', genScoreSpark(scores, 7));
+}
+
+function setKpiText(id, value, suffix = '') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (suffix) {
+    el.innerHTML = `${value}<span class="kpi-value-suf">${escHtml(suffix)}</span>`;
+  } else {
+    el.textContent = value;
+  }
+}
+
+function setKpiTrend(id, delta, unit, invert = false) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('up', 'down', 'flat');
+  if (delta === 0) {
+    el.classList.add('flat');
+    el.innerHTML = '—';
+    return;
+  }
+  // Sens visuel : si invert=true (alertes), une augmentation est rouge, une baisse est verte
+  const positive = invert ? (delta < 0) : (delta > 0);
+  el.classList.add(positive ? 'up' : 'down');
+  const arrow = positive
+    ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m18 9-6-6-6 6"/></svg>'
+    : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 15 6 6 6-6"/></svg>';
+  const sign = delta > 0 ? '+' : '';
+  const suffix = unit === 'percent' ? ' %' : unit === 'pts' ? ' pts' : '';
+  el.innerHTML = `${arrow}${sign}${delta}${suffix}`;
+}
+
+/**
+ * Sparkline = N barres flex normalisées entre 8% et 100%.
+ * `values` : tableau de N nombres (peuvent être 0).
+ */
+function renderSparkline(id, values) {
+  const el = document.getElementById(id);
+  if (!el || !Array.isArray(values) || !values.length) return;
+  const max = Math.max(1, ...values);
+  el.innerHTML = values.map(v => {
+    const h = Math.max(8, Math.round((v / max) * 100));
+    return `<span style="height:${h}%"></span>`;
+  }).join('');
+}
+
+// Sparkline data : approximations heuristiques quand on n'a pas d'historique fin
+function genFleetSpark(vehicles, n) {
+  // Tous les véhicules existants au moment T, on simule croissance progressive
+  const total = vehicles.length;
+  if (total === 0) return Array(n).fill(0);
+  const step = Math.max(1, Math.ceil(total / n));
+  return Array.from({ length: n }, (_, i) => Math.min(total, (i + 1) * step));
+}
+function genDiagsSpark(diags, n) {
+  // Compte des diagnostics par jour sur les n derniers jours
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const buckets = Array(n).fill(0);
+  for (const d of diags) {
+    const t = Date.parse(d.date || d.date_iso || '');
+    if (!t) continue;
+    const days = Math.floor((today.getTime() - t) / (24 * 60 * 60 * 1000));
+    if (days >= 0 && days < n) buckets[n - 1 - days]++;
+  }
+  return buckets;
+}
+function genAlertsSpark(diags, n) {
+  // Idem mais seulement les URGENT
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const buckets = Array(n).fill(0);
+  for (const d of diags) {
+    if ((d.statut || '').toUpperCase() !== 'URGENT') continue;
+    const t = Date.parse(d.date || d.date_iso || '');
+    if (!t) continue;
+    const days = Math.floor((today.getTime() - t) / (24 * 60 * 60 * 1000));
+    if (days >= 0 && days < n) buckets[n - 1 - days]++;
+  }
+  return buckets;
+}
+function genScoreSpark(scores, n) {
+  // Pas d'historique de score → on étale la moyenne sur n points avec une légère variation visuelle
+  if (!scores.length) return Array(n).fill(0);
+  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+  return Array.from({ length: n }, (_, i) => Math.round(avg * (0.85 + (i / n) * 0.3)));
+}
+
+/* ── Chart SVG : score fiabilité 30 derniers jours ──────────────── */
+function renderDashboardChart(data) {
+  const wrap = document.getElementById('dashChartWrap');
+  if (!wrap) return;
+
+  // Construit une série de 30 points (1 par jour) à partir des diagnostics
+  const series = buildScoreSeries(data, 30);
+  if (!series.some(p => p != null)) {
+    wrap.innerHTML = '<div class="dash-empty" style="padding:32px;text-align:center;color:var(--text-muted)">Pas assez de données pour tracer la courbe</div>';
+    return;
+  }
+
+  // Géométrie
+  const W = 800, H = 200;
+  const padL = 40, padR = 20, padT = 20, padB = 28;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  // Échelle Y : 0..100
+  const yScale = v => padT + innerH - (Math.max(0, Math.min(100, v)) / 100) * innerH;
+  const xScale = i => padL + (i / (series.length - 1)) * innerW;
+
+  // Interpole les points manquants (null) en linéaire entre voisins connus
+  const filled = interpolateSeries(series);
+
+  // Path principal
+  const points = filled.map((v, i) => `${xScale(i).toFixed(1)},${yScale(v).toFixed(1)}`);
+  const linePath = 'M' + points.join(' L');
+  const areaPath = `${linePath} L${xScale(filled.length - 1).toFixed(1)},${(padT + innerH).toFixed(1)} L${padL.toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
+
+  // Labels X : aujourd'hui, -10j, -20j, -30j
+  const today = new Date();
+  const fmt = d => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  const lbl = (offset) => {
+    const d = new Date(today); d.setDate(d.getDate() - offset); return fmt(d);
+  };
+
+  const lastVal = filled[filled.length - 1];
+  const lastX = xScale(filled.length - 1);
+  const lastY = yScale(lastVal);
+
+  wrap.innerHTML = `
+    <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Score fiabilité 30 jours">
+      <defs>
+        <linearGradient id="chartArea" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%"   stop-color="var(--accent)" stop-opacity=".22"/>
+          <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <!-- Grid horizontal lignes 70/80/90/100 -->
+      <g stroke="var(--border)" stroke-width="1" stroke-opacity=".5">
+        <line x1="${padL}" y1="${yScale(100).toFixed(1)}" x2="${W - padR}" y2="${yScale(100).toFixed(1)}"/>
+        <line x1="${padL}" y1="${yScale(90).toFixed(1)}"  x2="${W - padR}" y2="${yScale(90).toFixed(1)}"/>
+        <line x1="${padL}" y1="${yScale(80).toFixed(1)}"  x2="${W - padR}" y2="${yScale(80).toFixed(1)}"/>
+        <line x1="${padL}" y1="${yScale(70).toFixed(1)}"  x2="${W - padR}" y2="${yScale(70).toFixed(1)}"/>
+      </g>
+      <!-- Y axis labels -->
+      <g font-family="Inter" font-size="10" fill="var(--text-muted)">
+        <text x="6" y="${(yScale(100) + 4).toFixed(1)}">100</text>
+        <text x="6" y="${(yScale(90)  + 4).toFixed(1)}">90</text>
+        <text x="6" y="${(yScale(80)  + 4).toFixed(1)}">80</text>
+        <text x="6" y="${(yScale(70)  + 4).toFixed(1)}">70</text>
+      </g>
+      <!-- Area + line -->
+      <path d="${areaPath}" fill="url(#chartArea)"/>
+      <path d="${linePath}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Last point + tooltip -->
+      <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="5" fill="var(--accent)" stroke="var(--bg-card)" stroke-width="2"/>
+      <g transform="translate(${(lastX - 30).toFixed(1)}, ${Math.max(8, lastY - 36).toFixed(1)})">
+        <rect width="60" height="26" rx="6" fill="var(--text-main)"/>
+        <text x="30" y="17" font-family="Inter" font-size="11" font-weight="600" fill="var(--bg-card)" text-anchor="middle">${Math.round(lastVal)} / 100</text>
+      </g>
+      <!-- X axis labels -->
+      <g font-family="Inter" font-size="10" fill="var(--text-muted)">
+        <text x="${padL.toFixed(1)}" y="${(H - 8).toFixed(1)}">${escHtml(lbl(29))}</text>
+        <text x="${(padL + innerW * 0.33).toFixed(1)}" y="${(H - 8).toFixed(1)}">${escHtml(lbl(20))}</text>
+        <text x="${(padL + innerW * 0.66).toFixed(1)}" y="${(H - 8).toFixed(1)}">${escHtml(lbl(10))}</text>
+        <text x="${(W - padR).toFixed(1)}" y="${(H - 8).toFixed(1)}" text-anchor="end">${escHtml(lbl(0))}</text>
+      </g>
+    </svg>
+  `;
+}
+
+function buildScoreSeries(data, days) {
+  // Pour chaque jour des `days` derniers, on prend le score moyen des diagnostics ce jour-là.
+  // Si aucun, retourne null (sera interpolé).
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const buckets = Array(days).fill(null).map(() => []);
+  for (const d of (data.recent_diags || [])) {
+    const t = Date.parse(d.date || d.date_iso || '');
+    if (!t) continue;
+    const dayDiff = Math.floor((today.getTime() - t) / (24 * 60 * 60 * 1000));
+    if (dayDiff < 0 || dayDiff >= days) continue;
+    if (typeof d.score === 'number') {
+      buckets[days - 1 - dayDiff].push(d.score);
+    }
+  }
+  return buckets.map(arr => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
+}
+
+function interpolateSeries(arr) {
+  // Remplace les nulls par interpolation linéaire entre voisins connus
+  // Si pas de premier ou dernier point, on les complète avec le score moyen connu (ou 80 par défaut)
+  const known = arr.map((v, i) => v == null ? null : { i, v }).filter(Boolean);
+  if (!known.length) return arr.map(() => 80);
+  const fallback = Math.round(known.reduce((a, b) => a + b.v, 0) / known.length);
+  const out = arr.slice();
+  // Remplir début et fin avec premier/dernier connu
+  for (let i = 0; i < out.length && out[i] == null; i++) out[i] = known[0].v;
+  for (let i = out.length - 1; i >= 0 && out[i] == null; i--) out[i] = known[known.length - 1].v;
+  // Interpolation entre points connus
+  let lastIdx = 0;
+  for (let i = 1; i < out.length; i++) {
+    if (out[i] != null) {
+      const gap = i - lastIdx;
+      if (gap > 1) {
+        const lv = out[lastIdx], rv = out[i];
+        for (let k = 1; k < gap; k++) {
+          out[lastIdx + k] = lv + ((rv - lv) * k) / gap;
+        }
+      }
+      lastIdx = i;
+    }
+  }
+  return out.map(v => v == null ? fallback : v);
+}
+
+/* ── Activity feed : timeline événements récents ────────────────── */
+function renderDashboardActivity(data) {
+  const el = document.getElementById('dashActivityFeed');
+  if (!el) return;
+
+  const events = buildActivityEvents(data);
+  if (!events.length) {
+    el.innerHTML = '<div class="dash-empty" style="padding:32px;text-align:center;color:var(--text-muted)">Aucune activité récente</div>';
+    return;
+  }
+  el.innerHTML = events.slice(0, 6).map(ev => `
+    <div class="activity-item">
+      <div class="activity-dot ${ev.kind}">${ev.icon}</div>
+      <div class="activity-body">
+        <div class="activity-text">${ev.text}</div>
+        <div class="activity-meta">${escHtml(ev.meta)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function buildActivityEvents(data) {
+  const out = [];
+  const vehicles = data.vehicles || [];
+  const recentDiags = data.recent_diags || [];
+  const maint = data.maintenance_summary || {};
+
+  // SVGs Lucide
+  const ICON_CHECK  = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  const ICON_ALERT  = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+  const ICON_WRENCH = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
+
+  for (const d of recentDiags.slice(0, 8)) {
+    const veh = vehicles.find(v => v.vin === d.vin) || {};
+    const label = [veh.marque, veh.modele].filter(Boolean).join(' ') || (d.vin || '').slice(-8);
+    const plate = veh.code || veh.surnom || '';
+    const dateStr = d.date_affichage_relative || d.date_affichage || '';
+    const score = (d.score != null) ? `score ${d.score}/100` : '';
+    if ((d.statut || '').toUpperCase() === 'URGENT') {
+      out.push({
+        ts: Date.parse(d.date || d.date_iso || '') || 0,
+        kind: 'red', icon: ICON_ALERT,
+        text: `Alerte critique sur <strong>${escHtml(label)}${plate ? ' ' + escHtml(plate) : ''}</strong>`,
+        meta: [dateStr, score].filter(Boolean).join('  ·  ')
+      });
+    } else {
+      out.push({
+        ts: Date.parse(d.date || d.date_iso || '') || 0,
+        kind: 'green', icon: ICON_CHECK,
+        text: `Diagnostic terminé sur <strong>${escHtml(label)}${plate ? ' ' + escHtml(plate) : ''}</strong>`,
+        meta: [dateStr, score].filter(Boolean).join('  ·  ')
+      });
+    }
+  }
+
+  // Maintenance bientôt / dépassée
+  if (maint.urgent && maint.urgent > 0) {
+    out.push({
+      ts: Date.now(),
+      kind: 'red', icon: ICON_WRENCH,
+      text: `<strong>${maint.urgent}</strong> opération${maint.urgent > 1 ? 's' : ''} de maintenance dépassée${maint.urgent > 1 ? 's' : ''}`,
+      meta: 'À traiter sans délai'
+    });
+  }
+  if (maint.warning && maint.warning > 0) {
+    out.push({
+      ts: Date.now() - 1,
+      kind: 'amber', icon: ICON_WRENCH,
+      text: `<strong>${maint.warning}</strong> opération${maint.warning > 1 ? 's' : ''} de maintenance bientôt due${maint.warning > 1 ? 's' : ''}`,
+      meta: 'Anticiper la prochaine intervention'
+    });
+  }
+
+  // Tri descendant par timestamp
+  out.sort((a, b) => b.ts - a.ts);
+  return out;
 }
 
 function scoreColor(score) {
@@ -2906,36 +3362,53 @@ function scoreColor(score) {
 }
 
 function renderDashboardHealth(data) {
-  const avg   = data.avg_score ?? 0;
-  const health = data.health   || {};
+  const health   = data.health   || {};
   const vehicles = data.vehicles || [];
 
-  const elScore = document.getElementById('dashAvgScore');
-  const elLabel = document.getElementById('dashAvgLabel');
   const elGrid  = document.getElementById('dashHealthGrid');
-  if (!elScore) return;
+  const elCount = document.getElementById('dashHealthCount');
+  if (!elGrid) return;
 
-  const cls = scoreColor(avg);
-  elScore.textContent = avg > 0 ? avg + '/100' : '--';
-  elScore.className   = 'dash-avg-score score-' + cls;
-  elLabel.textContent = avg >= 80 ? 'Flotte en bon état' : avg >= 50 ? 'Attention requise' : avg > 0 ? 'État critique' : 'Aucune donnée';
+  if (elCount) elCount.textContent = vehicles.length;
 
   if (!vehicles.length) {
-    elGrid.innerHTML = '<div class="dash-empty">Aucun véhicule enregistré</div>';
+    elGrid.innerHTML = '<div class="dash-empty" style="padding:32px;text-align:center;color:var(--text-muted)">Aucun véhicule enregistré</div>';
     return;
   }
-  elGrid.innerHTML = vehicles.map(v => {
+
+  // Tri : par score croissant (les + critiques en premier)
+  const sorted = [...vehicles].sort((a, b) => {
+    const sa = (health[a.vin] || {}).score ?? 999;
+    const sb = (health[b.vin] || {}).score ?? 999;
+    return sa - sb;
+  });
+
+  elGrid.innerHTML = sorted.slice(0, 6).map(v => {
     const h = health[v.vin] || {};
     const s = h.score ?? 0;
     const c = scoreColor(s);
-    const name = [v.marque, v.modele].filter(Boolean).join(' ') || v.vin;
-    const lastKm = h.km_actuel ? h.km_actuel.toLocaleString('fr-FR') + ' km' : '—';
-    return `<div class="dash-vh-card score-${c}">
+    const name  = [v.marque, v.modele].filter(Boolean).join(' ') || v.vin;
+    const plate = v.code || v.surnom || '';
+    const lastKm = h.km_actuel ? h.km_actuel.toLocaleString('fr-FR').replace(/,/g, ' ') + ' km' : '—';
+    const lastDate = h.last_diag_date_relative || h.last_diag_date_affichage || '';
+    const initials = (v.marque || 'V').slice(0, 1).toUpperCase() + (v.modele || '').slice(0, 1).toUpperCase();
+    const vinShort = (v.vin || '').slice(-8);
+
+    return `<div class="veh-row" data-vin="${esc(v.vin)}" onclick="switchTab('historique')">
+      <div class="veh-icon">${esc(initials || 'V')}</div>
       <div>
-        <div class="dash-vh-name">${esc(name)}</div>
-        <div class="dash-vh-sub">${esc(lastKm)}</div>
+        <div class="veh-name">${esc(name)}${plate ? ` <span style="color:var(--text-muted);font-weight:500"> · ${esc(plate)}</span>` : ''}</div>
+        <div class="veh-vin">${esc(vinShort || v.vin || '')}</div>
       </div>
-      <div class="dash-vh-score">${s > 0 ? s : '--'}</div>
+      <div class="veh-km">${esc(lastKm)}</div>
+      <div class="veh-date">${esc(lastDate)}</div>
+      <div class="score ${c}">
+        <span class="score-dot"></span>
+        ${s > 0 ? s : '--'}
+      </div>
+      <div class="veh-chev">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+      </div>
     </div>`;
   }).join('');
 }
@@ -3196,7 +3669,8 @@ function setupEvents() {
   });
 
   // Diagnostic flow
-  document.getElementById('btnStartDiag').addEventListener('click', startDiagnostic);
+  document.getElementById('btnStartDiag').addEventListener('click', () => startDiagnostic({ type: 'panne' }));
+  document.getElementById('btnStartHealthCheck')?.addEventListener('click', () => startDiagnostic({ type: 'controle' }));
   document.getElementById('btnNewDiag').addEventListener('click', () => {
     // Réinitialisation complète de l'état diagnostic
     state.selectedVin = null;
@@ -3316,6 +3790,8 @@ function setupEvents() {
   document.getElementById('btnRunECUScan')?.addEventListener('click', runECUScan);
   document.getElementById('btnAnamneseConfirm')?.addEventListener('click', anamneseConfirm);
   document.getElementById('btnAnamneseSkip')?.addEventListener('click', anamneseSkip);
+  document.getElementById('btnBilanConfirm')?.addEventListener('click', bilanConfirm);
+  document.getElementById('btnBilanSkip')?.addEventListener('click', bilanSkip);
   document.getElementById('btnAudioRecord')?.addEventListener('click', audioRecordStart);
   document.getElementById('btnAudioStop')?.addEventListener('click', audioRecordStop);
   document.getElementById('btnAudioClear')?.addEventListener('click', audioRecordClear);
@@ -3354,7 +3830,7 @@ function setupEvents() {
 
   // Theme toggle
   document.getElementById('btnThemeToggle').addEventListener('click', toggleTheme);
-  applyTheme(localStorage.getItem('diagTheme') || 'dark');
+  applyTheme(localStorage.getItem('diagTheme') || 'light');
 
   // Settings (modal legacy — accessible via onglet Paramètres)
   document.getElementById('btnSettings')?.addEventListener('click', openSettings);
@@ -3758,7 +4234,7 @@ async function runFullAnalysis() {
       vehicle_manual: state.currentDiag.vehicle_manual || null,
     };
 
-    const result = await api('POST', '/api/analyze-full', body);
+    const result = await api('POST', '/api/analyze-full', body, 360000); // 6 min — analyse IA longue
     state.currentDiag.analyse_ia = result;
 
     const vi = result.vin_info || {};
@@ -3887,36 +4363,97 @@ function anamneseScrollTo() {
   }
 }
 
-// Affiche ou cache le banner de rappel anamnèse dans step 4
+// Affiche ou cache le banner de rappel anamnèse / bilan dans step 4
 function updateAnaReminderBanner() {
   const banner = document.getElementById('anaReminderBanner');
   if (!banner) return;
-  const anaCard = document.getElementById('wizardStepAnamnese');
-  const isDone    = anaCard?.classList.contains('done');
-  const isSkipped = anaCard?.classList.contains('skipped');
+  const cardId = getStep2CardId();
+  const card   = document.getElementById(cardId);
+  const isDone    = card?.classList.contains('done');
+  const isSkipped = card?.classList.contains('skipped');
   if (isDone || isSkipped) {
     banner.classList.add('hidden');
   } else {
     banner.classList.remove('hidden');
+    // Adapter le texte selon le mode
+    const isControle = cardId === 'wizardStepBilan';
+    banner.querySelector('strong')?.replaceChildren(
+      document.createTextNode(isControle ? 'Contexte du bilan non renseigné' : 'Contexte & Symptômes non renseigné')
+    );
+  }
+}
+
+/**
+ * Retourne l'ID de la carte étape 2 active selon le type de diagnostic :
+ *  - "panne"    → wizardStepAnamnese (8 sections : symptômes, fréquence, etc.)
+ *  - "controle" → wizardStepBilan    (4 sections : type de bilan, observations…)
+ */
+function getStep2CardId() {
+  return state.currentDiag.type === 'controle' ? 'wizardStepBilan' : 'wizardStepAnamnese';
+}
+
+/**
+ * Adapte les labels du rail wizard, du dot 5 et du bouton final selon le mode :
+ *  - panne    : "Contexte" / "Analyse" / "Lancer l'analyse complète"
+ *  - controle : "Bilan"    / "Bilan"   / "Lancer le bilan de santé"
+ */
+function applyDiagModeLabels() {
+  const isControle = state.currentDiag.type === 'controle';
+  // Dot rail wizard
+  const dotALabel = document.querySelector('#wdotA .wdot-label');
+  if (dotALabel) dotALabel.textContent = isControle ? 'Bilan' : 'Contexte';
+  // Dot 5 (Analyse / Bilan)
+  const dot4Label = document.querySelector('#wdot4 .wdot-label');
+  if (dot4Label) dot4Label.textContent = isControle ? 'Bilan' : 'Analyse';
+  // Card étape 5 — titre + desc + bouton
+  const step4 = document.getElementById('wizardStep4');
+  if (step4) {
+    const h3 = step4.querySelector('h3');
+    const desc = step4.querySelector('.wizard-card-desc');
+    const badge = step4.querySelector('.wizard-step-badge');
+    if (badge) badge.textContent = 'Étape 5';
+    if (h3)    h3.textContent    = isControle ? 'Bilan de santé' : 'Analyse IA complète';
+    if (desc)  desc.textContent  = isControle
+      ? 'L\'IA évalue l\'état général du véhicule par système et propose un plan de maintenance préventive.'
+      : 'L\'IA croise les codes DTC, les données au ralenti et en conduite pour un diagnostic précis.';
+  }
+  // Bouton final
+  const btnAnalyze = document.getElementById('btnRunAnalysis');
+  if (btnAnalyze) {
+    btnAnalyze.textContent = isControle ? 'Lancer le bilan de santé' : 'Lancer l\'analyse complète';
   }
 }
 
 function anamneseShow() {
-  const card = document.getElementById('wizardStepAnamnese');
+  applyDiagModeLabels();
+  const activeId   = getStep2CardId();
+  const otherId    = activeId === 'wizardStepBilan' ? 'wizardStepAnamnese' : 'wizardStepBilan';
+  const card       = document.getElementById(activeId);
+  const otherCard  = document.getElementById(otherId);
+  // Cache l'autre carte (l'app se rappelle peut-être d'un précédent diag)
+  if (otherCard) {
+    otherCard.classList.add('hidden');
+    otherCard.classList.remove('active', 'done', 'skipped');
+  }
   if (card) {
-    card.classList.remove('hidden');
+    card.classList.remove('hidden', 'done', 'skipped');
     card.classList.add('active');
   }
   const dot = document.getElementById('wdotA');
   if (dot) dot.className = 'wizard-step-dot active';
-  // Reset form
-  const form = card;
-  if (form) {
-    form.querySelectorAll('input[type=radio], input[type=checkbox]').forEach(i => i.checked = false);
-    form.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
-    form.querySelectorAll('textarea, input[type=text]').forEach(t => t.value = '');
+  // Adapter le label du dot selon mode
+  const dotLabel = dot?.querySelector('.wdot-label');
+  if (dotLabel) dotLabel.textContent = (activeId === 'wizardStepBilan') ? 'Bilan' : 'Contexte';
+  // Reset form de la carte active
+  if (card) {
+    card.querySelectorAll('input[type=radio], input[type=checkbox]').forEach(i => i.checked = false);
+    card.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
+    card.querySelectorAll('textarea, input[type=text]').forEach(t => t.value = '');
   }
   document.getElementById('anamneseSummary')?.classList.add('hidden');
+  document.getElementById('bilanSummary')?.classList.add('hidden');
+  // Re-init l'accordéon de la carte active
+  if (typeof setupAnamneseFlow === 'function') setupAnamneseFlow();
   // Bloquer step 2 tant que l'anamnèse n'est pas résolue
   _anamneseLockStep2();
 }
@@ -3955,8 +4492,9 @@ function _anamneseUnlockStep2() {
 }
 
 function anamneseHide() {
-  const card = document.getElementById('wizardStepAnamnese');
-  if (card) card.classList.add('hidden');
+  // Cache les deux cartes par sécurité (changement de mode entre 2 diags)
+  document.getElementById('wizardStepAnamnese')?.classList.add('hidden');
+  document.getElementById('wizardStepBilan')?.classList.add('hidden');
 }
 
 // ════════════════════════════════════════════════════════
@@ -4207,6 +4745,89 @@ function anamneseSkip() {
   if (summaryEl) { summaryEl.innerHTML = '⏩ Étape passée'; summaryEl.classList.remove('hidden'); }
   _anamneseUnlockStep2();
   updateAnaReminderBanner();
+  document.getElementById('wizardStep2')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ── Bilan de santé : collect + confirm + skip ──────────────────── */
+
+const BILAN_TYPE_LABELS = {
+  pre_achat:  'Pré-achat',
+  periodique: 'Contrôle périodique',
+  pre_ct:     'Avant contrôle technique',
+  pre_route:  'Avant longue route',
+};
+
+function bilanCollect() {
+  const get = (id) => (document.getElementById(id)?.value || '').trim();
+  const type = document.querySelector('input[name="bilan_type"]:checked')?.value || '';
+  const observations = Array.from(document.querySelectorAll('input[name="bilan_observation"]:checked'))
+    .map(i => i.value);
+  return {
+    type,
+    type_label:    BILAN_TYPE_LABELS[type] || '',
+    observations,
+    notes:         get('bilan_notes'),
+    interventions: get('bilan_interventions'),
+  };
+}
+
+function bilanConfirm() {
+  const data = bilanCollect();
+  if (!data.type) {
+    toast('Choisissez un type de bilan avant de valider', 'warning', 3500);
+    return;
+  }
+  state.currentDiag.bilan = data;
+  // Compatibilité : on stocke aussi dans `anamnese` pour que le backend puisse y accéder
+  state.currentDiag.anamnese = {
+    bilan_mode: true,
+    bilan_type: data.type,
+    bilan_type_label: data.type_label,
+    observations_visuelles: data.observations,
+    notes_controle: data.notes,
+    interventions_recentes: data.interventions,
+  };
+  // Résumé visuel
+  const parts = [data.type_label || 'Bilan'];
+  if (data.observations.length) parts.push(`${data.observations.length} observation(s)`);
+  if (data.notes) parts.push('notes saisies');
+  const summaryEl = document.getElementById('bilanSummary');
+  if (summaryEl) {
+    summaryEl.innerHTML = `✅ Contexte enregistré — ${parts.join(' · ')}`;
+    summaryEl.classList.remove('hidden');
+  }
+  // Marquer le dot
+  const dot = document.getElementById('wdotA');
+  if (dot) dot.className = 'wizard-step-dot done';
+  // Card en mode "done"
+  document.querySelector('#wizardStepBilan .wizard-card-actions')?.classList.add('hidden');
+  document.getElementById('wizardStepBilan')?.classList.remove('active');
+  document.getElementById('wizardStepBilan')?.classList.add('done');
+  _anamneseUnlockStep2();
+  toast('Contexte enregistré ✅ — L\'IA orientera son analyse', 'success', 2500);
+  if (typeof updateAnaReminderBanner === 'function') updateAnaReminderBanner();
+  if (typeof updateStepContextualHint === 'function') {
+    updateStepContextualHint(2);
+    updateStepContextualHint(3);
+    updateStepContextualHint(4);
+  }
+  if (state.wizardStep === 3 && typeof applyStepTriage === 'function') applyStepTriage(3);
+  // Scroll vers step 2
+  document.getElementById('wizardStep2')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function bilanSkip() {
+  state.currentDiag.bilan = null;
+  state.currentDiag.anamnese = null;
+  const dot = document.getElementById('wdotA');
+  if (dot) dot.className = 'wizard-step-dot skipped';
+  document.getElementById('wizardStepBilan')?.classList.remove('active');
+  document.getElementById('wizardStepBilan')?.classList.add('skipped');
+  document.querySelector('#wizardStepBilan .wizard-card-actions')?.classList.add('hidden');
+  const summaryEl = document.getElementById('bilanSummary');
+  if (summaryEl) { summaryEl.innerHTML = '⏩ Étape passée'; summaryEl.classList.remove('hidden'); }
+  _anamneseUnlockStep2();
+  if (typeof updateAnaReminderBanner === 'function') updateAnaReminderBanner();
   document.getElementById('wizardStep2')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -4742,13 +5363,10 @@ async function startAppData() {
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 
 let _updateDownloadUrl = '';
-let _countdownTimer    = null;
 let _isUpdating        = false;  // garde anti-doublon
-const UPDATE_DELAY_S   = 60;   // secondes avant installation automatique
 const SNOOZE_KEY       = 'rodia_update_snoozed_until';
 
 async function checkForUpdate() {
-  // Vérifier si l'utilisateur a différé la mise à jour
   const snoozedUntil = localStorage.getItem(SNOOZE_KEY);
   if (snoozedUntil && Date.now() < parseInt(snoozedUntil)) return;
 
@@ -4761,28 +5379,11 @@ async function checkForUpdate() {
       document.getElementById('updateNotes').textContent =
         data.release_notes || '';
       document.getElementById('updateBanner').style.display = 'flex';
-      startUpdateCountdown();
     }
   } catch { /* silencieux — pas de connexion ou pas de nouvelle version */ }
 }
 
-function startUpdateCountdown() {
-  let remaining = UPDATE_DELAY_S;
-  const el = document.getElementById('updateCountdown');
-
-  _countdownTimer = setInterval(() => {
-    remaining--;
-    if (el) el.textContent = `Redémarrage dans ${remaining}s`;
-    if (remaining <= 0) {
-      clearInterval(_countdownTimer);
-      applyUpdate();
-    }
-  }, 1000);
-}
-
 function snoozeUpdate() {
-  // Différer de 24h
-  clearInterval(_countdownTimer);
   localStorage.setItem(SNOOZE_KEY, Date.now() + 24 * 60 * 60 * 1000);
   document.getElementById('updateBanner').style.display = 'none';
 }
@@ -4790,41 +5391,1226 @@ function snoozeUpdate() {
 async function applyUpdate() {
   if (!_updateDownloadUrl || _isUpdating) return;
   _isUpdating = true;
-  clearInterval(_countdownTimer);
 
   const btn         = document.getElementById('btnUpdate');
   const countdownEl = document.getElementById('updateCountdown');
   btn.disabled      = true;
-  btn.textContent   = 'Téléchargement...';
-  if (countdownEl) countdownEl.textContent = 'Installation en cours…';
+  btn.textContent   = 'Préparation…';
+  if (countdownEl) countdownEl.textContent = 'Préparation de la mise à jour…';
   document.getElementById('updateProgress').style.display = 'flex';
 
   try {
+    // 1. Lance le script PowerShell + programme la fermeture de RODIA dans 5s côté serveur
     await api('POST', '/api/apply-update', { download_url: _updateDownloadUrl });
-    // Polling progression — RODIA va se fermer quand le téléchargement est terminé
-    const poll = setInterval(async () => {
-      try {
-        const s    = await api('GET', '/api/update-status');
-        const fill = document.getElementById('updateProgressFill');
-        const pct  = document.getElementById('updateProgressPct');
-        if (fill) fill.style.width = s.progress + '%';
-        if (pct)  pct.textContent  = s.progress + '%';
-        if (s.error) {
-          clearInterval(poll);
-          _isUpdating     = false;
-          btn.disabled    = false;
-          btn.textContent = 'Réessayer';
-          if (countdownEl) countdownEl.textContent = '';
-          alert('Erreur lors de la mise à jour : ' + s.error);
-        }
-      } catch { clearInterval(poll); } // RODIA se ferme = normal
-    }, 500);
+
+    // 2. Compte à rebours visible (Flask se ferme tout seul dans 5s — pas besoin d'appel supplémentaire)
+    for (let i = 5; i >= 1; i--) {
+      if (countdownEl) countdownEl.textContent = `Fermeture dans ${i} seconde${i > 1 ? 's' : ''}… L'installation démarrera automatiquement.`;
+      btn.textContent = `Fermeture dans ${i}s…`;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    // 3. Le wizard d'installation va s'ouvrir dans quelques secondes
+    if (countdownEl) countdownEl.textContent = 'RODIA se ferme… L\'installateur va s\'ouvrir automatiquement.';
+    btn.textContent = 'Fermeture…';
+
   } catch (e) {
     _isUpdating     = false;
     btn.disabled    = false;
     btn.textContent = 'Installer maintenant';
+    if (countdownEl) countdownEl.textContent = '';
     alert('Erreur : ' + e.message);
   }
+}
+
+/* ══════════════════════════════════════════════════════
+   COMMAND PALETTE (recherche globale Ctrl+K)
+══════════════════════════════════════════════════════ */
+
+let _searchIndex = null;        // {vehicles, dtcs, technicians, actions}
+let _searchActive = -1;         // Index du résultat sélectionné
+let _searchResults = [];        // Liste plate des résultats triés
+let _searchInputDebounce = null;
+
+/* ── Normalisation pour recherche insensible accents/casse ─────── */
+function searchNormalize(s) {
+  return (s || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+/* ── Construit l'index de recherche depuis les data dispo ──────── */
+function buildSearchIndex(data) {
+  const vehicles = (data && data.vehicles) || [];
+  const recentDiags = (data && data.recent_diags) || [];
+
+  // 1. Véhicules
+  const vehs = vehicles.map(v => {
+    const name = [v.marque, v.modele, v.annee].filter(Boolean).join(' ') || (v.vin || '').slice(-8);
+    const plate = v.code || v.surnom || '';
+    return {
+      kind: 'vehicle',
+      vin: v.vin,
+      label: name,
+      plate,
+      meta: [plate, v.vin].filter(Boolean).join(' · '),
+      // Champs indexés (concat normalisé)
+      _haystack: searchNormalize([v.marque, v.modele, v.annee, plate, v.surnom, v.vin].filter(Boolean).join(' ')),
+    };
+  });
+
+  // 2. DTCs : on parcourt l'historique de chaque véhicule (ou recent_diags si dispo)
+  const dtcMap = new Map();
+  for (const v of vehicles) {
+    const hist = v.historique || [];
+    for (const h of hist) {
+      const codes = h.dtc_codes || [];
+      const vehLabel = [v.marque, v.modele].filter(Boolean).join(' ') || (v.vin || '').slice(-8);
+      for (const code of codes) {
+        if (!code) continue;
+        const key = `${code}::${v.vin}`;
+        if (!dtcMap.has(key)) {
+          dtcMap.set(key, {
+            kind: 'dtc',
+            code,
+            vin: v.vin,
+            vehLabel,
+            date: h.date_affichage || h.date || '',
+            statut: h.statut || '',
+            _haystack: searchNormalize(`${code} ${vehLabel} ${h.statut || ''}`),
+          });
+        }
+      }
+    }
+  }
+  // Aussi depuis recent_diags si infos plus fraîches
+  for (const d of recentDiags) {
+    const veh = vehicles.find(x => x.vin === d.vin) || {};
+    const vehLabel = [veh.marque, veh.modele].filter(Boolean).join(' ') || (d.vin || '').slice(-8);
+    for (const code of (d.dtc_codes || [])) {
+      const key = `${code}::${d.vin}`;
+      if (!dtcMap.has(key)) {
+        dtcMap.set(key, {
+          kind: 'dtc',
+          code,
+          vin: d.vin,
+          vehLabel,
+          date: d.date_affichage || '',
+          statut: d.statut || '',
+          _haystack: searchNormalize(`${code} ${vehLabel} ${d.statut || ''}`),
+        });
+      }
+    }
+  }
+  const dtcs = Array.from(dtcMap.values());
+
+  // 3. Techniciens uniques
+  const techMap = new Map();
+  for (const v of vehicles) {
+    for (const h of (v.historique || [])) {
+      const t = (h.technicien || '').trim();
+      if (!t) continue;
+      techMap.set(t, (techMap.get(t) || 0) + 1);
+    }
+  }
+  const technicians = Array.from(techMap.entries()).map(([name, count]) => ({
+    kind: 'technician',
+    name,
+    count,
+    _haystack: searchNormalize(name),
+  }));
+
+  // 4. Actions rapides (toujours dispo)
+  const actions = [
+    { kind: 'action', label: 'Aller au tableau de bord', desc: 'Vue d\'ensemble de la flotte', run: () => switchTab('dashboard'), icon: 'dashboard' },
+    { kind: 'action', label: 'Lancer un diagnostic', desc: 'Démarrer une lecture OBD2', run: () => switchTab('diagnostic'), icon: 'play' },
+    { kind: 'action', label: 'Voir tous les véhicules', desc: 'Liste complète de la flotte', run: () => switchTab('historique'), icon: 'truck' },
+    { kind: 'action', label: 'Ouvrir les paramètres', desc: 'Configuration du logiciel', run: () => switchTab('parametres'), icon: 'settings' },
+    { kind: 'action', label: 'Basculer mode jour / nuit', desc: 'Changer l\'apparence', run: () => { toggleTheme(); refreshUserDisplay && refreshUserDisplay(); }, icon: 'theme' },
+    { kind: 'action', label: 'Modifier mon nom', desc: 'Personnaliser le profil', run: () => {
+        const input = document.getElementById('inputUserName');
+        if (input) input.value = getUserName();
+        openModal('modalEditName');
+        setTimeout(() => input && input.focus(), 50);
+      }, icon: 'edit' },
+    { kind: 'action', label: 'Raccourcis clavier', desc: 'Voir tous les raccourcis', run: () => openModal('modalShortcuts'), icon: 'keyboard' },
+    { kind: 'action', label: 'Tour guidé de l\'app', desc: 'Démarrer la visite guidée', run: () => startGuidedTour(), icon: 'play' },
+    { kind: 'action', label: 'Signaler un problème', desc: 'Contacter le support', run: () => openBugReportModal(), icon: 'bug' },
+  ];
+  for (const a of actions) {
+    a._haystack = searchNormalize(a.label + ' ' + a.desc);
+  }
+
+  return { vehicles: vehs, dtcs, technicians, actions };
+}
+
+function refreshSearchIndex() {
+  // Préfère l'index complet via /api/fleet, sinon fallback sur _dashData
+  fetch('/api/fleet').then(r => r.ok ? r.json() : null).then(vehList => {
+    const data = {
+      vehicles: vehList || (_dashData && _dashData.vehicles) || [],
+      recent_diags: (_dashData && _dashData.recent_diags) || [],
+    };
+    _searchIndex = buildSearchIndex(data);
+  }).catch(() => {
+    _searchIndex = buildSearchIndex(_dashData || {});
+  });
+}
+
+/* ── Recherche : retourne les top résultats par catégorie ──────── */
+function performSearch(query) {
+  if (!_searchIndex) refreshSearchIndex();
+  const q = searchNormalize(query);
+  if (!q) {
+    // Sans query : montre uniquement les actions par défaut
+    return [
+      { group: 'Actions rapides', items: (_searchIndex ? _searchIndex.actions : []).slice(0, 6) },
+    ];
+  }
+
+  const idx = _searchIndex || { vehicles: [], dtcs: [], technicians: [], actions: [] };
+
+  // Score : 100 si match au début, 60 si match au milieu d'un mot, 30 sinon
+  const score = (haystack) => {
+    if (!haystack.includes(q)) return 0;
+    if (haystack.startsWith(q)) return 100;
+    // Match au début d'un mot
+    const re = new RegExp('(^|[^a-z0-9])' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    if (re.test(haystack)) return 60;
+    return 30;
+  };
+
+  const filterAndSort = (arr) => arr
+    .map(x => ({ x, s: score(x._haystack) }))
+    .filter(o => o.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .map(o => o.x);
+
+  const groups = [
+    { group: 'Véhicules',    items: filterAndSort(idx.vehicles).slice(0, 5)    },
+    { group: 'Codes DTC',    items: filterAndSort(idx.dtcs).slice(0, 5)        },
+    { group: 'Techniciens',  items: filterAndSort(idx.technicians).slice(0, 4) },
+    { group: 'Actions',      items: filterAndSort(idx.actions).slice(0, 4)     },
+  ];
+  return groups.filter(g => g.items.length > 0);
+}
+
+/* ── Rendu de la liste de résultats ────────────────────────────── */
+function renderSearchResults(query, groups) {
+  const wrap = document.getElementById('searchPaletteResults');
+  if (!wrap) return;
+  _searchResults = [];
+
+  if (!groups.length) {
+    wrap.innerHTML = `<div class="search-palette-empty">Aucun résultat pour <strong>« ${escHtml(query)} »</strong></div>`;
+    _searchActive = -1;
+    return;
+  }
+
+  const ICON_VEH  = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>';
+  const ICON_DTC  = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+  const ICON_TECH = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+  const ICON_ACT  = {
+    dashboard: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>',
+    play:      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
+    truck:     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>',
+    settings:  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+    theme:     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/></svg>',
+    edit:      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
+    keyboard:  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M6 9h.01"/><path d="M10 9h.01"/><path d="M14 9h.01"/><path d="M18 9h.01"/><path d="M10 13h4"/></svg>',
+    bug:       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+  };
+
+  // Helper : highlight des matches dans le label
+  const highlight = (text, q) => {
+    if (!q) return escHtml(text);
+    const safe = escHtml(text);
+    const norm = searchNormalize(text);
+    const idx = norm.indexOf(q);
+    if (idx === -1) return safe;
+    // On surligne dans la version originale en se basant sur les indices normalisés
+    return safe.slice(0, idx) + '<mark>' + safe.slice(idx, idx + q.length) + '</mark>' + safe.slice(idx + q.length);
+  };
+
+  let html = '';
+  let flatIdx = 0;
+  for (const g of groups) {
+    html += `<div class="search-group-title">${escHtml(g.group)}</div>`;
+    for (const item of g.items) {
+      const myIdx = flatIdx++;
+      _searchResults.push(item);
+      let icon = '', title = '', meta = '';
+      if (item.kind === 'vehicle') {
+        icon  = ICON_VEH;
+        title = highlight(item.label, query);
+        meta  = item.meta;
+      } else if (item.kind === 'dtc') {
+        icon  = ICON_DTC;
+        title = highlight(item.code, query) + ' <span style="color:var(--text-muted);font-weight:500"> · ' + escHtml(item.vehLabel) + '</span>';
+        meta  = [item.statut, item.date].filter(Boolean).join(' · ');
+      } else if (item.kind === 'technician') {
+        icon  = ICON_TECH;
+        title = highlight(item.name, query);
+        meta  = `${item.count} diagnostic${item.count > 1 ? 's' : ''}`;
+      } else if (item.kind === 'action') {
+        icon  = ICON_ACT[item.icon] || ICON_ACT.settings;
+        title = highlight(item.label, query);
+        meta  = item.desc;
+      }
+      html += `<div class="search-result" data-idx="${myIdx}" role="option">
+        <div class="search-result-icon">${icon}</div>
+        <div class="search-result-body">
+          <div class="search-result-title">${title}</div>
+          <div class="search-result-meta">${escHtml(meta)}</div>
+        </div>
+      </div>`;
+    }
+  }
+  wrap.innerHTML = html;
+
+  // Sélectionne le premier résultat
+  _searchActive = 0;
+  highlightSearchActive();
+
+  // Click handlers
+  wrap.querySelectorAll('.search-result').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.idx, 10);
+      activateSearchResult(idx);
+    });
+    el.addEventListener('mouseenter', () => {
+      _searchActive = parseInt(el.dataset.idx, 10);
+      highlightSearchActive(false);
+    });
+  });
+}
+
+function highlightSearchActive(autoScroll = true) {
+  const wrap = document.getElementById('searchPaletteResults');
+  if (!wrap) return;
+  wrap.querySelectorAll('.search-result').forEach(el => {
+    const idx = parseInt(el.dataset.idx, 10);
+    el.classList.toggle('active', idx === _searchActive);
+    if (idx === _searchActive && autoScroll) {
+      el.scrollIntoView({ block: 'nearest' });
+    }
+  });
+}
+
+function activateSearchResult(idx) {
+  const item = _searchResults[idx];
+  if (!item) return;
+  closeSearchPalette();
+  switch (item.kind) {
+    case 'vehicle':
+      switchTab('historique');
+      // Tente d'ouvrir la fiche véhicule via une fonction existante si elle existe
+      if (typeof loadVehicleDetail === 'function')      loadVehicleDetail(item.vin);
+      else if (typeof openVehicle === 'function')        openVehicle(item.vin);
+      else if (typeof showVehicleDetail === 'function')  showVehicleDetail(item.vin);
+      break;
+    case 'dtc':
+      switchTab('historique');
+      if (typeof loadVehicleDetail === 'function')       loadVehicleDetail(item.vin);
+      else if (typeof openVehicle === 'function')        openVehicle(item.vin);
+      if (typeof toast === 'function') toast(`Code ${item.code} — ${item.vehLabel}`, 'info');
+      break;
+    case 'technician':
+      switchTab('historique');
+      if (typeof toast === 'function') toast(`${item.count} diagnostic(s) par ${item.name}`, 'info');
+      break;
+    case 'action':
+      try { item.run(); } catch (e) { console.error(e); }
+      break;
+  }
+}
+
+/* ── Open / close palette ──────────────────────────────────────── */
+
+function openSearchPalette() {
+  const palette = document.getElementById('searchPalette');
+  const input   = document.getElementById('searchPaletteInput');
+  if (!palette || !input) return;
+  refreshSearchIndex();
+  palette.classList.remove('hidden');
+  input.value = '';
+  setTimeout(() => input.focus(), 30);
+  // Affiche par défaut les actions
+  renderSearchResults('', performSearch(''));
+}
+
+function closeSearchPalette() {
+  const palette = document.getElementById('searchPalette');
+  if (palette) palette.classList.add('hidden');
+}
+
+function setupSearchPalette() {
+  const trigger = document.getElementById('globalSearchTrigger');
+  const palette = document.getElementById('searchPalette');
+  const input   = document.getElementById('searchPaletteInput');
+
+  if (trigger) trigger.addEventListener('click', openSearchPalette);
+
+  // Hotkey Ctrl+K / Cmd+K
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      if (palette && palette.classList.contains('hidden')) openSearchPalette();
+      else closeSearchPalette();
+    }
+  });
+
+  if (palette) {
+    // Click outside (sur l'overlay) → close
+    palette.addEventListener('click', (e) => {
+      if (e.target === palette) closeSearchPalette();
+    });
+  }
+
+  if (input) {
+    input.addEventListener('input', () => {
+      if (_searchInputDebounce) clearTimeout(_searchInputDebounce);
+      const q = input.value;
+      _searchInputDebounce = setTimeout(() => {
+        renderSearchResults(q, performSearch(q));
+      }, 60);
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeSearchPalette();
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (_searchActive < _searchResults.length - 1) _searchActive++;
+        else _searchActive = 0;
+        highlightSearchActive();
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (_searchActive > 0) _searchActive--;
+        else _searchActive = _searchResults.length - 1;
+        highlightSearchActive();
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (_searchActive >= 0) activateSearchResult(_searchActive);
+        return;
+      }
+    });
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   ANAMNÈSE — Accordéon progressif (révélation en cascade)
+══════════════════════════════════════════════════════ */
+
+let _anaExpandAll = false;  // Mode "tout déplier" (un seul état pour la session)
+
+/**
+ * Initialise le flow d'anamnèse :
+ *  - 1ère section ouverte, autres masquées
+ *  - À chaque réponse complète : marque la section .done, ferme, ouvre la suivante
+ *  - Branche conditionnelle via data-ana-skip-if
+ *  - Bouton "Tout déplier" pour les utilisateurs experts
+ */
+function setupAnamneseFlow() {
+  // Initialise les 2 accordéons (panne + bilan). Comme un seul est visible
+  // à la fois (#wizardStepAnamnese ou #wizardStepBilan), c'est sans risque.
+  ['anamneseAccordion', 'bilanAccordion'].forEach(initAccordion);
+}
+
+function initAccordion(accordionId) {
+  const accordion = document.getElementById(accordionId);
+  if (!accordion) return;
+  // Évite de re-binder les listeners en cas d'appel répété
+  if (accordion.dataset.flowReady === '1') {
+    // Reset état uniquement
+    const items = Array.from(accordion.querySelectorAll('.ana-acc-item'));
+    items.forEach((it, idx) => {
+      it.classList.toggle('open',        idx === 0);
+      it.classList.toggle('hidden-step', idx !== 0);
+      it.classList.remove('done');
+      const sumEl = it.querySelector('.ana-acc-summary');
+      if (sumEl) sumEl.textContent = '';
+    });
+    updateAnamneseProgress();
+    return;
+  }
+
+  const items = Array.from(accordion.querySelectorAll('.ana-acc-item'));
+  if (!items.length) return;
+
+  // État initial : seule la 1ère est révélée et ouverte
+  items.forEach((it, idx) => {
+    if (idx === 0) {
+      it.classList.add('open');
+      it.classList.remove('hidden-step', 'done');
+    } else {
+      it.classList.add('hidden-step');
+      it.classList.remove('open', 'done');
+    }
+  });
+  updateAnamneseProgress();
+
+  // Délégation : changement de tout input dans l'accordéon → re-évalue l'item
+  accordion.addEventListener('input',  onAnaInputChange);
+  accordion.addEventListener('change', onAnaInputChange);
+
+  // Click sur le trigger d'un item → ouvre/ferme (sauf si caché)
+  accordion.addEventListener('click', (e) => {
+    const trigger = e.target.closest('.ana-acc-trigger');
+    if (!trigger) return;
+    const item = trigger.closest('.ana-acc-item');
+    if (!item || item.classList.contains('hidden-step')) return;
+    // Section déjà ouverte ET pas en mode expand-all : on ne ferme pas avec click
+    if (item.classList.contains('open') && !_anaExpandAll) return;
+    items.forEach(i => i.classList.remove('open'));
+    item.classList.add('open');
+  });
+
+  // Bouton "Tout déplier" / "Replier" — propre à chaque accordéon
+  // (anaExpandAll pour panne, bilanExpandAll pour bilan)
+  const btnId = (accordionId === 'bilanAccordion') ? 'bilanExpandAll' : 'anaExpandAll';
+  const btn = document.getElementById(btnId);
+  if (btn) {
+    btn.addEventListener('click', () => {
+      _anaExpandAll = !_anaExpandAll;
+      if (_anaExpandAll) {
+        items.forEach(it => {
+          if (!shouldSkipItem(it)) {
+            it.classList.remove('hidden-step');
+            it.classList.add('open');
+          }
+        });
+        btn.textContent = 'Replier';
+      } else {
+        const firstUndone = items.find(i =>
+          !i.classList.contains('done') &&
+          !i.classList.contains('hidden-step') &&
+          !shouldSkipItem(i)
+        );
+        items.forEach((it, idx) => {
+          it.classList.remove('open');
+          if (idx > 0 && !it.classList.contains('done') && it !== firstUndone) {
+            it.classList.add('hidden-step');
+          }
+        });
+        if (firstUndone) firstUndone.classList.add('open');
+        btn.textContent = 'Tout déplier';
+      }
+    });
+  }
+  accordion.dataset.flowReady = '1';
+}
+
+function onAnaInputChange(e) {
+  const item = e.target.closest('.ana-acc-item');
+  if (!item) return;
+
+  const wasDone = item.classList.contains('done');
+  const fields  = (item.dataset.anaFields || '').split(',').map(s => s.trim()).filter(Boolean);
+  const filled  = fields.length > 0 && fields.some(name => isAnaFieldFilled(name));
+
+  // Met à jour le résumé compact en permanence
+  item.querySelector('.ana-acc-summary').textContent = computeAnaSummary(item);
+
+  if (filled) {
+    item.classList.add('done');
+    // Si on n'était pas déjà "done", on enchaîne vers la section suivante
+    if (!wasDone && !_anaExpandAll) {
+      advanceToNextSection(item);
+    }
+  } else {
+    item.classList.remove('done');
+  }
+  updateAnamneseProgress();
+}
+
+function isAnaFieldFilled(name) {
+  // Cherche n'importe quel input/select/textarea avec ce name
+  const els = document.querySelectorAll(
+    `[name="${name}"], #${name}`
+  );
+  for (const el of els) {
+    const tag = (el.tagName || '').toLowerCase();
+    const type = (el.type || '').toLowerCase();
+    if (type === 'radio' || type === 'checkbox') {
+      if (el.checked) return true;
+    } else if (tag === 'select' || tag === 'input' || tag === 'textarea') {
+      if (el.value && el.value.trim()) return true;
+    }
+  }
+  return false;
+}
+
+function advanceToNextSection(currentItem) {
+  // Ferme la section courante après un court délai (le temps de voir le check)
+  setTimeout(() => {
+    // On utilise l'accordéon parent du currentItem (panne ou bilan)
+    const accordion = currentItem.closest('.anamnese-accordion');
+    if (!accordion) return;
+    const items = Array.from(accordion.querySelectorAll('.ana-acc-item'));
+    currentItem.classList.remove('open');
+    // Cherche la prochaine non-done, non-skipped, non-hidden-step
+    let next = null;
+    let foundCurrent = false;
+    for (const it of items) {
+      if (!foundCurrent) {
+        if (it === currentItem) foundCurrent = true;
+        continue;
+      }
+      if (shouldSkipItem(it)) {
+        // On marque comme done (skipped) pour qu'elle compte dans la progression
+        it.classList.add('done');
+        it.classList.add('hidden-step');
+        const sumEl = it.querySelector('.ana-acc-summary');
+        if (sumEl) sumEl.textContent = '— Non applicable';
+        continue;
+      }
+      next = it;
+      break;
+    }
+    if (next) {
+      next.classList.remove('hidden-step');
+      next.classList.add('open');
+      // Scroll smooth dans la card si nécessaire
+      setTimeout(() => {
+        next.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
+    }
+    updateAnamneseProgress();
+  }, 280);
+}
+
+function shouldSkipItem(item) {
+  const cond = item.dataset.anaSkipIf;
+  if (!cond) return false;
+  let parsed;
+  try { parsed = JSON.parse(cond); } catch { return false; }
+  // Toutes les paires clé:valeur doivent matcher pour skipper
+  for (const [name, expected] of Object.entries(parsed)) {
+    const els = document.querySelectorAll(`[name="${name}"]:checked, #${name}`);
+    let actual = '';
+    for (const el of els) {
+      if (el.type === 'radio' || el.type === 'checkbox') {
+        actual = el.value;
+      } else {
+        actual = el.value;
+      }
+      if (actual) break;
+    }
+    if (actual !== expected) return false;
+  }
+  return true;
+}
+
+function computeAnaSummary(item) {
+  const id = item.dataset.anaId;
+  switch (id) {
+    case 'triage': {
+      const v = (document.querySelector('[name="ana_demarre"]:checked') || {}).value;
+      if (v === 'oui') return 'Oui, il démarre';
+      if (v === 'non') return 'Non, ne démarre pas';
+      return '';
+    }
+    case 'chronologie': {
+      const dep = document.getElementById('ana_depuis');
+      const itv = document.getElementById('ana_apres_intervention');
+      const parts = [];
+      if (dep && dep.value) parts.push(dep.options[dep.selectedIndex].text);
+      if (itv && itv.value && itv.value.trim()) parts.push('intervention récente');
+      return parts.join(' · ');
+    }
+    case 'frequence': {
+      const v = (document.querySelector('[name="ana_freq"]:checked') || {}).value;
+      return v || '';
+    }
+    case 'moment': {
+      const checked = Array.from(document.querySelectorAll('[name="ana_moment"]:checked'));
+      if (!checked.length) return '';
+      if (checked.length <= 2) return checked.map(c => c.value).join(', ');
+      return `${checked.length} moments`;
+    }
+    case 'symptomes': {
+      const checked = Array.from(document.querySelectorAll('[name="ana_symptome"]:checked'));
+      if (!checked.length) return '';
+      return `${checked.length} symptôme${checked.length > 1 ? 's' : ''}`;
+    }
+    case 'acoustique': {
+      const txt = (document.getElementById('ana_sons') || {}).value || '';
+      if (!txt.trim()) return '';
+      return txt.length > 40 ? txt.slice(0, 38) + '…' : txt;
+    }
+    case 'interventions': {
+      const txt = (document.getElementById('ana_interventions') || {}).value || '';
+      if (!txt.trim()) return '';
+      return txt.length > 40 ? txt.slice(0, 38) + '…' : txt;
+    }
+    case 'autres': {
+      const txt = (document.getElementById('ana_infos') || {}).value || '';
+      if (!txt.trim()) return '';
+      return txt.length > 40 ? txt.slice(0, 38) + '…' : txt;
+    }
+    /* ── Bilan de santé ── */
+    case 'bilan_type': {
+      const v = (document.querySelector('[name="bilan_type"]:checked') || {}).value;
+      return BILAN_TYPE_LABELS[v] || '';
+    }
+    case 'bilan_observations': {
+      const checked = Array.from(document.querySelectorAll('[name="bilan_observation"]:checked'));
+      if (!checked.length) return '';
+      return `${checked.length} point${checked.length > 1 ? 's' : ''} OK`;
+    }
+    case 'bilan_notes': {
+      const txt = (document.getElementById('bilan_notes') || {}).value || '';
+      if (!txt.trim()) return '';
+      return txt.length > 40 ? txt.slice(0, 38) + '…' : txt;
+    }
+    case 'bilan_interventions': {
+      const txt = (document.getElementById('bilan_interventions') || {}).value || '';
+      if (!txt.trim()) return '';
+      return txt.length > 40 ? txt.slice(0, 38) + '…' : txt;
+    }
+  }
+  return '';
+}
+
+/**
+ * Met à jour les barres de progression des deux accordéons (panne + bilan).
+ * Une seule est visible à la fois mais les deux states sont maintenus.
+ */
+function updateAnamneseProgress() {
+  _updateOneProgress('anamneseAccordion', 'anaProgressCurrent', 'anaProgressTotal', 'anaProgressFill');
+  _updateOneProgress('bilanAccordion',    'bilanProgressCurrent', 'bilanProgressTotal', 'bilanProgressFill');
+}
+
+function _updateOneProgress(accordionId, curId, totId, fillId) {
+  const accordion = document.getElementById(accordionId);
+  if (!accordion) return;
+  const items = Array.from(accordion.querySelectorAll('.ana-acc-item'));
+  const eligible = items.filter(it => !shouldSkipItem(it));
+  const done = eligible.filter(it => it.classList.contains('done')).length;
+  const total = eligible.length;
+  const cur = Math.min(done + 1, total);
+
+  const curEl = document.getElementById(curId);
+  const totEl = document.getElementById(totId);
+  const fillEl = document.getElementById(fillId);
+  if (curEl) curEl.textContent = cur;
+  if (totEl) totEl.textContent = total;
+  if (fillEl) {
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    fillEl.style.width = pct + '%';
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   USER MENU & HELP MENU & MODALES SUPPORT
+══════════════════════════════════════════════════════ */
+
+const USER_NAME_KEY = 'rodiaUserName';
+
+function getUserName() {
+  return (localStorage.getItem(USER_NAME_KEY) || '').trim();
+}
+function setUserName(name) {
+  const v = (name || '').trim();
+  if (v) localStorage.setItem(USER_NAME_KEY, v);
+  else   localStorage.removeItem(USER_NAME_KEY);
+  refreshUserDisplay();
+  // Re-render le hero du dashboard si chargé
+  if (_dashData) renderDashboardHero(_dashData);
+}
+
+function computeInitials(name) {
+  const clean = (name || '').trim();
+  if (!clean) return '--';
+  const parts = clean.split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function refreshUserDisplay() {
+  const name     = getUserName();
+  const initials = computeInitials(name);
+  const display  = name || 'Utilisateur';
+
+  const avatar      = document.getElementById('userAvatar');
+  const userNameEl  = document.getElementById('userName');
+  const menuAvatar  = document.getElementById('userMenuAvatar');
+  const menuName    = document.getElementById('userMenuName');
+  const menuSub     = document.getElementById('userMenuSub');
+  const themeMeta   = document.getElementById('menuThemeMeta');
+
+  if (avatar)     avatar.textContent     = initials;
+  if (userNameEl) userNameEl.textContent = display;
+  if (menuAvatar) menuAvatar.textContent = initials;
+  if (menuName)   menuName.textContent   = display;
+  if (menuSub)    menuSub.textContent    = name ? 'Profil local' : 'Aucun nom défini';
+
+  // Apparence : reflète le thème actif
+  if (themeMeta) {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    themeMeta.textContent = dark ? 'Sombre' : 'Clair';
+  }
+}
+
+/* ── Dropdown menu : composant générique ──────────────────────── */
+
+const _openDropdowns = new Set();
+
+function setupDropdown(triggerId, menuId) {
+  const trigger = document.getElementById(triggerId);
+  const menu    = document.getElementById(menuId);
+  if (!trigger || !menu) return;
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (menu.classList.contains('open')) {
+      closeDropdown(menu);
+    } else {
+      // Fermer les autres dropdowns ouverts
+      _openDropdowns.forEach(m => { if (m !== menu) closeDropdown(m); });
+      menu.classList.add('open');
+      trigger.setAttribute('aria-expanded', 'true');
+      _openDropdowns.add(menu);
+    }
+  });
+
+  // Click outside → close
+  document.addEventListener('click', (e) => {
+    if (!menu.classList.contains('open')) return;
+    if (menu.contains(e.target) || trigger.contains(e.target)) return;
+    closeDropdown(menu, trigger);
+  });
+
+  // Échap → close
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menu.classList.contains('open')) {
+      closeDropdown(menu, trigger);
+    }
+  });
+}
+
+function closeDropdown(menu, trigger = null) {
+  menu.classList.remove('open');
+  _openDropdowns.delete(menu);
+  if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  else {
+    // Cherche le trigger associé (tous ceux avec aria-controls ou parent menu-host)
+    const host = menu.closest('.menu-host');
+    if (host) {
+      const t = host.querySelector('[aria-haspopup]');
+      if (t) t.setAttribute('aria-expanded', 'false');
+    }
+  }
+}
+
+function closeAllDropdowns() {
+  _openDropdowns.forEach(m => closeDropdown(m));
+}
+
+/* ── Modale : composant générique open/close ─────────────────── */
+
+function openModal(id) {
+  const m = document.getElementById(id);
+  if (m) m.classList.remove('hidden');
+}
+function closeModal(id) {
+  const m = document.getElementById(id);
+  if (m) m.classList.add('hidden');
+}
+
+/* ── Setup user menu ──────────────────────────────────────────── */
+
+function setupUserMenu() {
+  setupDropdown('userChip', 'userMenu');
+
+  const editBtn = document.getElementById('menuEditName');
+  if (editBtn) editBtn.addEventListener('click', () => {
+    closeAllDropdowns();
+    const input = document.getElementById('inputUserName');
+    if (input) input.value = getUserName();
+    openModal('modalEditName');
+    setTimeout(() => input && input.focus(), 50);
+  });
+
+  const themeBtn = document.getElementById('menuToggleTheme');
+  if (themeBtn) themeBtn.addEventListener('click', () => {
+    toggleTheme();
+    refreshUserDisplay();
+    closeAllDropdowns();
+  });
+
+  const resetBtn = document.getElementById('menuResetProfile');
+  if (resetBtn) resetBtn.addEventListener('click', () => {
+    closeAllDropdowns();
+    if (!confirm('Réinitialiser votre profil ? Le nom et les préférences UI seront effacés. La flotte est conservée.')) return;
+    localStorage.removeItem(USER_NAME_KEY);
+    localStorage.removeItem('diagTheme');
+    refreshUserDisplay();
+    if (_dashData) renderDashboardHero(_dashData);
+    if (typeof toast === 'function') toast('Profil réinitialisé', 'success');
+  });
+
+  // Modale Edit Name
+  const saveBtn   = document.getElementById('btnSaveUserName');
+  const cancelBtn = document.getElementById('btnCancelUserName');
+  const input     = document.getElementById('inputUserName');
+  if (saveBtn) saveBtn.addEventListener('click', () => {
+    setUserName(input ? input.value : '');
+    closeModal('modalEditName');
+  });
+  if (cancelBtn) cancelBtn.addEventListener('click', () => closeModal('modalEditName'));
+  if (input) input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { saveBtn && saveBtn.click(); }
+    if (e.key === 'Escape') { closeModal('modalEditName'); }
+  });
+}
+
+/* ── Setup help menu ──────────────────────────────────────────── */
+
+function setupHelpMenu() {
+  setupDropdown('btnHelp', 'helpMenu');
+
+  // Affiche la version dans le footer du menu
+  fetch('/api/support/diagnostic')
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data || !data.summary) return;
+      const lbl = document.getElementById('helpVersionLabel');
+      if (lbl) lbl.textContent = `RODIA v${data.summary.version} (${data.summary.build})`;
+    })
+    .catch(() => {});
+
+  const shortcutsBtn = document.getElementById('menuShortcuts');
+  if (shortcutsBtn) shortcutsBtn.addEventListener('click', () => {
+    closeAllDropdowns();
+    openModal('modalShortcuts');
+  });
+  const closeShortcutsBtn = document.getElementById('btnCloseShortcuts');
+  if (closeShortcutsBtn) closeShortcutsBtn.addEventListener('click', () => closeModal('modalShortcuts'));
+
+  const tourBtn = document.getElementById('menuTour');
+  if (tourBtn) tourBtn.addEventListener('click', () => {
+    closeAllDropdowns();
+    startGuidedTour();
+  });
+
+  const supportBtn = document.getElementById('menuSupport');
+  if (supportBtn) supportBtn.addEventListener('click', () => {
+    closeAllDropdowns();
+    const subject = encodeURIComponent('RODIA — Question support');
+    const body = encodeURIComponent(`Bonjour,\n\n[Décrivez votre demande ici]\n\n--\nUtilisateur : ${getUserName() || '—'}`);
+    window.location.href = `mailto:support@lyvenia.fr?subject=${subject}&body=${body}`;
+  });
+
+  const bugBtn = document.getElementById('menuReportBug');
+  if (bugBtn) bugBtn.addEventListener('click', () => {
+    closeAllDropdowns();
+    openBugReportModal();
+  });
+}
+
+/* ── Modale signaler un problème ──────────────────────────────── */
+
+let _bugReport = null; // { report, summary } chargé depuis /api/support/diagnostic
+
+async function openBugReportModal() {
+  openModal('modalReportBug');
+  const desc = document.getElementById('bugDescription');
+  if (desc) { desc.value = ''; setTimeout(() => desc.focus(), 50); }
+
+  const preview = document.getElementById('bugSystemPreview');
+  if (preview) preview.textContent = 'Chargement…';
+
+  try {
+    const r = await fetch('/api/support/diagnostic');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _bugReport = await r.json();
+    if (preview && _bugReport && _bugReport.summary) {
+      const s = _bugReport.summary;
+      preview.textContent = `RODIA v${s.version} (${s.build})  ·  ${s.os}  ·  ${s.timestamp}`;
+    }
+  } catch (e) {
+    if (preview) preview.textContent = 'Infos système indisponibles.';
+    _bugReport = { report: '', summary: {} };
+  }
+}
+
+function buildBugMailContent() {
+  const desc = (document.getElementById('bugDescription') || {}).value || '';
+  const include = (document.getElementById('bugIncludeSystem') || {}).checked;
+  const sys = (include && _bugReport && _bugReport.report) ? _bugReport.report : '';
+  const lines = [
+    'Bonjour,',
+    '',
+    desc.trim() || '[Décrivez ici ce qui s\'est passé]',
+    '',
+  ];
+  if (sys) {
+    lines.push('');
+    lines.push(sys);
+  }
+  return lines.join('\n');
+}
+
+function closeBugReportSetup() {
+  const sendBtn   = document.getElementById('btnSendBugReport');
+  const copyBtn   = document.getElementById('btnCopyBugReport');
+  const cancelBtn = document.getElementById('btnCancelBugReport');
+
+  if (sendBtn) sendBtn.addEventListener('click', () => {
+    const subject = encodeURIComponent('RODIA — Signalement de problème');
+    const body    = encodeURIComponent(buildBugMailContent());
+    window.location.href = `mailto:support@lyvenia.fr?subject=${subject}&body=${body}`;
+    closeModal('modalReportBug');
+  });
+  if (copyBtn) copyBtn.addEventListener('click', async () => {
+    const content = buildBugMailContent();
+    try {
+      await navigator.clipboard.writeText(content);
+      if (typeof toast === 'function') toast('Rapport copié dans le presse-papier', 'success');
+    } catch {
+      if (typeof toast === 'function') toast('Impossible de copier — sélectionnez puis Ctrl+C', 'warning');
+    }
+  });
+  if (cancelBtn) cancelBtn.addEventListener('click', () => closeModal('modalReportBug'));
+}
+
+/* ── Tour guidé interactif ────────────────────────────────────── */
+
+const TOUR_STEPS = [
+  {
+    selector: '#globalSearch',
+    title: 'Recherche globale',
+    text: 'Trouvez n\'importe quel véhicule, code DTC ou technicien en quelques touches. Raccourci : Ctrl + K.',
+    placement: 'bottom',
+  },
+  {
+    selector: '.sidebar-nav',
+    title: 'Navigation',
+    text: 'Tableau de bord pour la vue d\'ensemble, Diagnostic pour démarrer une lecture OBD2, Véhicules pour consulter votre flotte.',
+    placement: 'right',
+  },
+  {
+    selector: '#kpiGrid',
+    title: 'Vos métriques clés',
+    text: 'Flotte active, diagnostics ce mois, alertes urgentes et score fiabilité moyen — tout en un coup d\'œil.',
+    placement: 'bottom',
+  },
+  {
+    selector: '#dashHealthCard',
+    title: 'État de la flotte',
+    text: 'Vos véhicules triés par criticité. Cliquez pour ouvrir le détail.',
+    placement: 'top',
+  },
+  {
+    selector: '#dashActivityCard',
+    title: 'Activité récente',
+    text: 'Toutes les actions importantes qui se passent sur votre flotte : diagnostics terminés, alertes, maintenances dues.',
+    placement: 'left',
+  },
+  {
+    selector: '#btnThemeToggle',
+    title: 'Mode sombre',
+    text: 'Basculez entre le mode jour et le mode nuit selon vos préférences. Votre choix est mémorisé.',
+    placement: 'bottom',
+  },
+];
+
+let _tourIndex = 0;
+
+function startGuidedTour() {
+  // S'assure d'être sur le tableau de bord
+  if (typeof switchTab === 'function') switchTab('dashboard');
+  _tourIndex = 0;
+  ensureTourElements();
+  const overlay   = document.getElementById('tourOverlay');
+  const spotlight = document.getElementById('tourSpotlight');
+  const pop       = document.getElementById('tourPopover');
+  overlay.classList.remove('hidden');
+  spotlight.classList.remove('hidden');
+  pop.classList.remove('hidden');
+  setTimeout(() => {
+    overlay.classList.add('visible');
+    pop.classList.add('visible');
+    showTourStep(_tourIndex);
+  }, 30);
+}
+
+function ensureTourElements() {
+  if (document.getElementById('tourOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'tourOverlay';
+  overlay.className = 'tour-overlay hidden';
+  document.body.appendChild(overlay);
+
+  const spotlight = document.createElement('div');
+  spotlight.id = 'tourSpotlight';
+  spotlight.className = 'tour-spotlight hidden';
+  document.body.appendChild(spotlight);
+
+  const pop = document.createElement('div');
+  pop.id = 'tourPopover';
+  pop.className = 'tour-popover hidden';
+  pop.innerHTML = `
+    <div class="tour-popover-step" id="tourStepLabel">Étape 1</div>
+    <div class="tour-popover-title" id="tourTitle">—</div>
+    <div class="tour-popover-text" id="tourText">—</div>
+    <div class="tour-popover-actions">
+      <button type="button" class="tour-popover-skip" id="tourSkip">Passer</button>
+      <div class="tour-popover-nav">
+        <span class="tour-popover-progress" id="tourProgress">1/6</span>
+        <button type="button" class="tour-popover-btn" id="tourPrev">Précédent</button>
+        <button type="button" class="tour-popover-btn primary" id="tourNext">Suivant</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(pop);
+
+  document.getElementById('tourSkip').addEventListener('click', endGuidedTour);
+  document.getElementById('tourPrev').addEventListener('click', () => {
+    if (_tourIndex > 0) { _tourIndex--; showTourStep(_tourIndex); }
+  });
+  document.getElementById('tourNext').addEventListener('click', () => {
+    if (_tourIndex < TOUR_STEPS.length - 1) { _tourIndex++; showTourStep(_tourIndex); }
+    else endGuidedTour();
+  });
+  // Échap = fermer
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.getElementById('tourOverlay').classList.contains('hidden')) {
+      endGuidedTour();
+    }
+  });
+}
+
+function showTourStep(idx) {
+  const step = TOUR_STEPS[idx];
+  if (!step) return;
+  const target = document.querySelector(step.selector);
+  const spotlight = document.getElementById('tourSpotlight');
+  const pop = document.getElementById('tourPopover');
+  const stepLabel = document.getElementById('tourStepLabel');
+  const titleEl = document.getElementById('tourTitle');
+  const textEl  = document.getElementById('tourText');
+  const progEl  = document.getElementById('tourProgress');
+  const prevBtn = document.getElementById('tourPrev');
+  const nextBtn = document.getElementById('tourNext');
+
+  stepLabel.textContent = `Étape ${idx + 1}`;
+  titleEl.textContent   = step.title;
+  textEl.textContent    = step.text;
+  progEl.textContent    = `${idx + 1} / ${TOUR_STEPS.length}`;
+  prevBtn.disabled = idx === 0;
+  prevBtn.style.visibility = idx === 0 ? 'hidden' : 'visible';
+  nextBtn.textContent = idx === TOUR_STEPS.length - 1 ? 'Terminer' : 'Suivant';
+
+  if (!target) {
+    // Fallback : centre l'overlay sur l'écran
+    spotlight.style.cssText = 'top:50%;left:50%;width:0;height:0;transform:translate(-50%,-50%)';
+    pop.style.top  = '50%';
+    pop.style.left = '50%';
+    pop.style.transform = 'translate(-50%, -50%)';
+    return;
+  }
+  pop.style.transform = '';
+
+  const rect = target.getBoundingClientRect();
+  const PAD = 8;
+  spotlight.style.top    = (rect.top    - PAD) + 'px';
+  spotlight.style.left   = (rect.left   - PAD) + 'px';
+  spotlight.style.width  = (rect.width  + PAD * 2) + 'px';
+  spotlight.style.height = (rect.height + PAD * 2) + 'px';
+
+  // Place le popover selon `placement`
+  positionPopover(pop, rect, step.placement || 'bottom');
+
+  // Scroll si nécessaire
+  if (rect.top < 80 || rect.bottom > window.innerHeight - 80) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function positionPopover(pop, rect, placement) {
+  const popW = 320;
+  const popH = pop.offsetHeight || 180;
+  const margin = 16;
+  let top = 0, left = 0;
+
+  switch (placement) {
+    case 'top':
+      top  = rect.top - popH - margin;
+      left = rect.left + rect.width / 2 - popW / 2;
+      break;
+    case 'left':
+      top  = rect.top + rect.height / 2 - popH / 2;
+      left = rect.left - popW - margin;
+      break;
+    case 'right':
+      top  = rect.top + rect.height / 2 - popH / 2;
+      left = rect.right + margin;
+      break;
+    case 'bottom':
+    default:
+      top  = rect.bottom + margin;
+      left = rect.left + rect.width / 2 - popW / 2;
+      break;
+  }
+  // Clamp dans la viewport
+  top  = Math.max(16, Math.min(window.innerHeight - popH - 16, top));
+  left = Math.max(16, Math.min(window.innerWidth  - popW - 16, left));
+  pop.style.top  = top + 'px';
+  pop.style.left = left + 'px';
+}
+
+function endGuidedTour() {
+  const overlay = document.getElementById('tourOverlay');
+  const pop     = document.getElementById('tourPopover');
+  const sp      = document.getElementById('tourSpotlight');
+  if (overlay) overlay.classList.remove('visible');
+  if (pop) pop.classList.remove('visible');
+  setTimeout(() => {
+    if (overlay) overlay.classList.add('hidden');
+    if (pop)     pop.classList.add('hidden');
+    if (sp) {
+      sp.classList.add('hidden');
+      sp.style.cssText = '';
+    }
+  }, 220);
+  localStorage.setItem('rodiaTourSeen', '1');
+}
+
+/* ── Zone danger : effacer toutes les données ─────────────────── */
+
+function setupDangerZone() {
+  const btn = document.getElementById('btnEraseAll');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    if (!confirm("ATTENTION : cette action efface TOUTE la flotte, l'historique, la configuration et vos préférences.\n\nCette opération est IRRÉVERSIBLE. Confirmer ?")) return;
+    if (!confirm("Êtes-vous absolument certain ?\n\nDernière chance d'annuler.")) return;
+    try {
+      // 1. Reset côté serveur (flotte, config, logs)
+      const r = await fetch('/api/support/erase-all', { method: 'POST' });
+      const data = await r.json().catch(() => ({}));
+      // 2. Clear localStorage
+      ['rodiaUserName', 'diagTheme', 'rodiaTourSeen'].forEach(k => localStorage.removeItem(k));
+      const msg = data.errors && data.errors.length
+        ? 'Effacement partiel — ' + data.errors.join(', ')
+        : 'Toutes les données ont été effacées. Le logiciel va recharger.';
+      alert(msg);
+      window.location.reload();
+    } catch (e) {
+      alert('Erreur lors de l\'effacement : ' + (e.message || e));
+    }
+  });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -4833,10 +6619,24 @@ async function init() {
   setupEvents();
   setupSearch();
   setupAuthEvents();
+  setupUserMenu();
+  setupHelpMenu();
+  setupSearchPalette();
+  setupAnamneseFlow();
+  closeBugReportSetup();
+  setupDangerZone();
+  refreshUserDisplay();
 
   // Heartbeat toujours actif dès le démarrage — maintient le serveur Flask en vie
-  // même pendant l'affichage de l'écran de login
-  setInterval(() => fetch('/api/heartbeat', { method: 'POST' }).catch(() => {}), 5000);
+  // même pendant l'affichage de l'écran de login.
+  // On envoie un premier ping immédiat pour éviter la fenêtre de 5s au démarrage.
+  // Edge throttle setInterval quand la fenêtre perd le focus → on renvoie aussi
+  // un ping sur visibilitychange/focus pour compenser.
+  const _sendHeartbeat = () => fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+  _sendHeartbeat();
+  setInterval(_sendHeartbeat, 5000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) _sendHeartbeat(); });
+  window.addEventListener('focus', _sendHeartbeat);
 
   // Vérification silencieuse des mises à jour (ne bloque pas le démarrage)
   checkForUpdate();

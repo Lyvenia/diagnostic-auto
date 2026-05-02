@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RODIA — Diagnostic Connecté</title>
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="/style.css">
   <script src="/chart.min.js"></script>
 </head>
@@ -24,7 +27,7 @@
         <div class="update-progress-bar"><div id="updateProgressFill" class="update-progress-fill"></div></div>
         <span id="updateProgressPct">0%</span>
       </div>
-      <span id="updateCountdown" class="update-countdown">Redémarrage dans 60s</span>
+      <span id="updateCountdown" class="update-countdown"></span>
       <button id="btnUpdate" class="update-btn" onclick="applyUpdate()">Installer maintenant</button>
       <button class="update-dismiss" onclick="snoozeUpdate()">Plus tard</button>
     </div>
@@ -34,17 +37,16 @@
   <header class="topbar">
     <div class="topbar-left">
       <div class="topbar-brand">
-        <span class="logo">RODIA</span>
-        <span class="logo-sub">by Lyvenia · Diagnostic Connecté</span>
+        <div class="brand-mark" aria-hidden="true">R</div>
+        <div class="brand-text-wrap">
+          <span class="logo">RODIA</span>
+          <span class="logo-sub">by Lyvenia · Diagnostic OBD2</span>
+        </div>
       </div>
-    </div>
-    <div class="topbar-center">
-      <button type="button" class="theme-toggle" id="btnThemeToggle" title="Changer le thème" aria-label="Changer le thème">
-        <span class="theme-toggle-label" id="themeModeLabel">Nuit</span>
-        <span class="theme-toggle-track">
-          <span class="theme-toggle-thumb"></span>
-        </span>
-        <span class="theme-toggle-label" id="themeModeLabelR">Jour</span>
+      <button type="button" class="topbar-search" id="globalSearchTrigger" aria-label="Ouvrir la recherche globale">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <span class="topbar-search-placeholder">Rechercher un véhicule, code DTC, technicien…</span>
+        <kbd class="topbar-search-kbd">Ctrl K</kbd>
       </button>
     </div>
     <div class="topbar-right">
@@ -53,24 +55,147 @@
         <span id="badgeLabel">Déconnecté</span>
       </div>
       <span id="simLabel" class="hidden"></span>
+      <div class="topbar-divider" aria-hidden="true"></div>
+      <button type="button" class="icon-btn" id="btnNotifications" title="Notifications" aria-label="Notifications">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="icon-btn-dot hidden" id="notifDot"></span>
+      </button>
+      <div class="menu-host">
+        <button type="button" class="icon-btn" id="btnHelp" title="Aide" aria-label="Aide" aria-haspopup="menu" aria-expanded="false">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+        </button>
+        <div class="dropdown-menu" id="helpMenu" role="menu">
+          <div class="dropdown-section-label">Aide</div>
+          <button type="button" class="dropdown-item" id="menuShortcuts" role="menuitem">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M6 9h.01"/><path d="M10 9h.01"/><path d="M14 9h.01"/><path d="M18 9h.01"/><path d="M6 13h.01"/><path d="M18 13h.01"/><path d="M10 13h4"/></svg>
+            Raccourcis clavier
+            <span class="dropdown-item-meta">Ctrl K</span>
+          </button>
+          <button type="button" class="dropdown-item" id="menuTour" role="menuitem">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+            Tour guidé de l'app
+          </button>
+          <div class="dropdown-divider"></div>
+          <div class="dropdown-section-label">Support</div>
+          <button type="button" class="dropdown-item" id="menuSupport" role="menuitem">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+            Contacter le support
+          </button>
+          <button type="button" class="dropdown-item" id="menuReportBug" role="menuitem">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            Signaler un problème
+          </button>
+          <div class="dropdown-footer">
+            <span id="helpVersionLabel">RODIA v—</span>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="icon-btn theme-toggle" id="btnThemeToggle" title="Basculer mode jour / nuit" aria-label="Basculer le thème">
+        <svg class="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        <svg class="theme-icon-moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <div class="topbar-divider" aria-hidden="true"></div>
+      <div class="menu-host">
+        <button type="button" class="user-chip" id="userChip" aria-label="Compte utilisateur" aria-haspopup="menu" aria-expanded="false">
+          <span class="user-avatar" id="userAvatar">--</span>
+          <span class="user-name" id="userName">Utilisateur</span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="dropdown-menu" id="userMenu" role="menu">
+          <div class="dropdown-header">
+            <div class="dropdown-header-avatar" id="userMenuAvatar">--</div>
+            <div class="dropdown-header-info">
+              <div class="dropdown-header-name" id="userMenuName">Utilisateur</div>
+              <div class="dropdown-header-sub" id="userMenuSub">Profil local</div>
+            </div>
+          </div>
+          <button type="button" class="dropdown-item" id="menuEditName" role="menuitem">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+            Modifier mon nom
+          </button>
+          <button type="button" class="dropdown-item" id="menuToggleTheme" role="menuitem">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+            Apparence
+            <span class="dropdown-item-meta" id="menuThemeMeta">Clair</span>
+          </button>
+          <div class="dropdown-divider"></div>
+          <button type="button" class="dropdown-item danger" id="menuResetProfile" role="menuitem">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            Réinitialiser mon profil
+          </button>
+        </div>
+      </div>
     </div>
   </header>
+
+  <!-- ══════════════════ COMMAND PALETTE ══════════════════ -->
+  <div class="search-palette-overlay hidden" id="searchPalette" role="dialog" aria-modal="true" aria-label="Recherche globale">
+    <div class="search-palette" role="combobox" aria-haspopup="listbox" aria-expanded="true">
+      <div class="search-palette-input-wrap">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="searchPaletteInput" class="search-palette-input" placeholder="Tapez pour rechercher : VIN, marque, code DTC, technicien…" aria-label="Champ de recherche" autocomplete="off" spellcheck="false">
+        <kbd class="search-palette-esc">Échap</kbd>
+      </div>
+      <div class="search-palette-results" id="searchPaletteResults" role="listbox" aria-label="Résultats">
+        <div class="search-palette-empty">Tapez quelque chose pour démarrer la recherche…</div>
+      </div>
+      <div class="search-palette-footer">
+        <span><kbd>↑</kbd><kbd>↓</kbd> naviguer</span>
+        <span><kbd>↵</kbd> ouvrir</span>
+        <span><kbd>Échap</kbd> fermer</span>
+      </div>
+    </div>
+  </div>
 
   <!-- ══════════════════ LAYOUT ══════════════════ -->
   <div class="layout">
 
-    <!-- ── Sidebar : Flotte ── -->
+    <!-- ── Sidebar : Navigation principale + Flotte rapide ── -->
     <aside class="sidebar">
-      <div class="sidebar-header">
-        <span class="sidebar-title">🚗 Flotte</span>
-        <button type="button" class="btn btn-primary btn-sm" id="btnNewDiag">+ Nouveau</button>
+
+      <!-- Navigation principale (groupes) -->
+      <nav class="sidebar-nav" aria-label="Navigation principale">
+        <div class="sidebar-nav-group">
+          <div class="sidebar-nav-title">Vue d'ensemble</div>
+          <button type="button" class="tab-btn" data-tab="dashboard">
+            <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            <span class="tab-label">Tableau de bord</span>
+          </button>
+        </div>
+        <div class="sidebar-nav-group">
+          <div class="sidebar-nav-title">Flotte</div>
+          <button type="button" class="tab-btn active" data-tab="diagnostic">
+            <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.5.5 0 0 1-.96 0L9.24 2.18a.5.5 0 0 0-.96 0l-2.35 8.36A2 2 0 0 1 4 12H2"/></svg>
+            <span class="tab-label">Diagnostic</span>
+          </button>
+          <button type="button" class="tab-btn" data-tab="historique">
+            <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+            <span class="tab-label">Véhicules</span>
+          </button>
+        </div>
+        <div class="sidebar-nav-group">
+          <div class="sidebar-nav-title">Système</div>
+          <button type="button" class="tab-btn" data-tab="parametres">
+            <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span class="tab-label">Paramètres</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Flotte rapide (raccourci toujours visible) -->
+      <div class="sidebar-fleet-quick">
+        <div class="sidebar-header">
+          <span class="sidebar-title">🚗 Flotte</span>
+          <button type="button" class="btn btn-primary btn-sm" id="btnNewDiag">+ Nouveau</button>
+        </div>
+        <div class="sidebar-search">
+          <input type="text" id="searchInput" class="sidebar-search-input" placeholder="🔍 VIN, marque, code DTC…" aria-label="Rechercher dans la flotte">
+        </div>
+        <div id="fleetList" class="fleet-list">
+          <div class="empty-state">Aucun véhicule</div>
+        </div>
       </div>
-      <div class="sidebar-search">
-        <input type="text" id="searchInput" class="sidebar-search-input" placeholder="🔍 VIN, marque, code DTC…" aria-label="Rechercher dans la flotte">
-      </div>
-      <div id="fleetList" class="fleet-list">
-        <div class="empty-state">Aucun véhicule</div>
-      </div>
+
       <!-- Alertes patterns flotte -->
       <div id="patternsPanel" class="patterns-panel hidden">
         <div class="patterns-title">🔍 Codes récurrents</div>
@@ -85,29 +210,48 @@
     <!-- ── Main content ── -->
     <main class="main-content">
 
-      <!-- Tabs -->
-      <div class="tabs">
-        <button type="button" class="tab-btn active" data-tab="diagnostic">📡 Diagnostic en cours</button>
-        <button type="button" class="tab-btn" data-tab="dashboard">📊 Tableau de bord</button>
-        <button type="button" class="tab-btn" data-tab="historique">🚗 Flotte</button>
-        <button type="button" class="tab-btn" data-tab="parametres">⚙️ Paramètres</button>
-      </div>
-
       <!-- ══ Bandeau notifications globales ══ -->
       <div id="notifBanner" class="notif-banner hidden"></div>
 
       <!-- ═══ TAB : Diagnostic en cours ═══ -->
       <div class="tab-panel active" id="tab-diagnostic">
 
-        <!-- Step 0 : Welcome / Connect -->
+        <!-- Step 0 : Welcome / Connect — choix du type de diagnostic -->
         <div id="stepWelcome" class="step-panel">
-          <div class="welcome-card">
-            <div class="welcome-icon">🔌</div>
-            <h2>Démarrer un diagnostic</h2>
-            <p>Branchez l'adaptateur ELM327 sur le port OBD2 du véhicule,<br>
-               puis cliquez sur <strong>Lancer le diagnostic</strong>.</p>
-            <p class="hint" id="simHint">Sans adaptateur, le mode simulation sera activé automatiquement.</p>
-            <button type="button" class="btn btn-primary btn-lg" id="btnStartDiag">▶ Lancer le diagnostic</button>
+          <div class="diag-choice-wrap">
+            <div class="diag-choice-head">
+              <h2>Quel type de diagnostic ?</h2>
+              <p class="diag-choice-sub">Branchez l'adaptateur ELM327 sur le port OBD2, puis choisissez l'objectif. <span class="hint" id="simHint">Sans adaptateur, le mode simulation s'active automatiquement.</span></p>
+            </div>
+            <div class="diag-choice-grid">
+
+              <!-- Diagnostic de panne -->
+              <button type="button" class="diag-choice-card" id="btnStartDiag" data-diag-type="panne">
+                <div class="diag-choice-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                </div>
+                <div class="diag-choice-title">Diagnostic de panne</div>
+                <p class="diag-choice-desc">Le véhicule présente un symptôme, un voyant allumé ou ne fonctionne pas comme d'habitude.</p>
+                <div class="diag-choice-cta">
+                  Démarrer
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </div>
+              </button>
+
+              <!-- Bilan de santé -->
+              <button type="button" class="diag-choice-card" id="btnStartHealthCheck" data-diag-type="controle">
+                <div class="diag-choice-icon green">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                </div>
+                <div class="diag-choice-title">Bilan de santé</div>
+                <p class="diag-choice-desc">Contrôle périodique, pré-achat, pré-CT ou avant longue route. Évaluer l'état général sans panne signalée.</p>
+                <div class="diag-choice-cta">
+                  Lancer le bilan
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </div>
+              </button>
+
+            </div>
           </div>
         </div>
 
@@ -122,40 +266,45 @@
         <!-- Step 2 : Data ready -->
         <div id="stepData" class="step-panel hidden">
 
-        <!-- Step indicator -->
-        <div class="wizard-indicator" id="wizardIndicator">
-          <div class="wizard-step-dot active" id="wdot1" title="Étape 1 — Lecture">
-            <span class="wdot-num">1</span>
-            <span class="wdot-label">Lecture</span>
+        <!-- ═════ Wizard rail (gauche, sticky) ═════ -->
+        <aside class="wizard-rail">
+          <div class="wizard-indicator" id="wizardIndicator">
+            <div class="wizard-step-dot active" id="wdot1" title="Étape 1 — Lecture">
+              <span class="wdot-num">1</span>
+              <span class="wdot-label">Lecture</span>
+            </div>
+            <div class="wizard-connector"></div>
+            <div class="wizard-step-dot" id="wdotA" title="Contexte & Symptômes">
+              <span class="wdot-num">2</span>
+              <span class="wdot-label">Contexte</span>
+            </div>
+            <div class="wizard-connector"></div>
+            <div class="wizard-step-dot" id="wdot2" title="Étape 3 — Ralenti">
+              <span class="wdot-num">3</span>
+              <span class="wdot-label">Ralenti</span>
+            </div>
+            <div class="wizard-connector"></div>
+            <div class="wizard-step-dot" id="wdot3" title="Étape 4 — Roulant">
+              <span class="wdot-num">4</span>
+              <span class="wdot-label">Roulant</span>
+            </div>
+            <div class="wizard-connector"></div>
+            <div class="wizard-step-dot" id="wdot4" title="Étape 5 — Analyse IA">
+              <span class="wdot-num">5</span>
+              <span class="wdot-label">Analyse</span>
+            </div>
           </div>
-          <div class="wizard-connector"></div>
-          <div class="wizard-step-dot" id="wdotA" title="Contexte & Symptômes">
-            <span class="wdot-num">📋</span>
-            <span class="wdot-label">Contexte</span>
-          </div>
-          <div class="wizard-connector"></div>
-          <div class="wizard-step-dot" id="wdot2" title="Étape 2 — Ralenti">
-            <span class="wdot-num">2</span>
-            <span class="wdot-label">Ralenti</span>
-          </div>
-          <div class="wizard-connector"></div>
-          <div class="wizard-step-dot" id="wdot3" title="Étape 3 — Roulant">
-            <span class="wdot-num">3</span>
-            <span class="wdot-label">Roulant</span>
-          </div>
-          <div class="wizard-connector"></div>
-          <div class="wizard-step-dot" id="wdot4" title="Étape 4 — Analyse IA">
-            <span class="wdot-num">4</span>
-            <span class="wdot-label">Analyse</span>
-          </div>
-        </div>
+        </aside>
+
+        <!-- ═════ Wizard content (droite, scrollable) ═════ -->
+        <div class="wizard-content">
 
         <!-- Vehicle banner (always visible once we have VIN) -->
         <div class="vehicle-banner" id="vehicleBanner">
           <div class="vehicle-info">
             <span class="vin-badge" id="vinDisplay">VIN —</span>
             <span id="vehicleLabel">Marque / Année</span>
-            <span class="sim-tag hidden" id="simTag">🎮 Simulation</span>
+            <span class="sim-tag hidden" id="simTag">Simulation</span>
           </div>
           <div class="vehicle-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <div id="vinManualZone" class="hidden">
@@ -191,13 +340,13 @@
                   </select>
                 </div>
                 <div class="vf-field" style="align-self:flex-end;display:flex;gap:6px">
-                  <button type="button" class="btn btn-sm btn-primary" id="btnApplyManualVin">✔ Valider</button>
-                  <button type="button" class="btn btn-sm btn-outline" id="btnCancelManualVin">✕</button>
+                  <button type="button" class="btn btn-sm btn-primary" id="btnApplyManualVin">Valider</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="btnCancelManualVin" aria-label="Annuler">×</button>
                 </div>
               </div>
             </div>
-            <button type="button" class="btn btn-sm btn-outline" id="btnEditVin" title="Renseigner le véhicule manuellement">✏️ Véhicule</button>
-            <button type="button" class="btn btn-sm btn-outline" id="btnNewReadDiag">🔄 Nouvelle lecture</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnEditVin" title="Renseigner le véhicule manuellement">Véhicule</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnNewReadDiag">Nouvelle lecture</button>
           </div>
         </div>
 
@@ -205,7 +354,7 @@
         <div class="wizard-card active" id="wizardStep1">
           <div class="wizard-card-header">
             <span class="wizard-step-badge">Étape 1</span>
-            <h3>🔍 Lecture des codes DTC</h3>
+            <h3>Lecture des codes DTC</h3>
             <p class="wizard-card-desc">Contact allumé, moteur coupé. L'outil lit le VIN et les codes d'erreur.</p>
           </div>
           <div class="wizard-card-body">
@@ -216,13 +365,13 @@
             </div>
             <div id="dtcList" class="dtc-list"></div>
             <div id="freezeFrameSection" class="freeze-frame-section hidden">
-              <div class="freeze-frame-title">📸 Freeze Frame</div>
+              <div class="freeze-frame-title">Freeze Frame</div>
               <div id="freezeFrameGrid" class="freeze-frame-grid"></div>
             </div>
           </div>
           <div class="wizard-card-actions" id="step1Actions">
-            <button type="button" class="btn btn-sm btn-danger-outline" id="btnClearDTC">🗑 Effacer les codes</button>
-            <button type="button" class="btn btn-sm btn-outline" id="btnShowECUScan" title="Scanner tous les modules ABS, airbag, BCM...">🔍 Scan tous modules</button>
+            <button type="button" class="btn btn-sm btn-danger-outline" id="btnClearDTC">Effacer les codes</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnShowECUScan" title="Scanner tous les modules ABS, airbag, BCM...">Scan tous modules</button>
           </div>
           <div class="wizard-card-summary hidden" id="step1Summary"></div>
         </div>
@@ -230,162 +379,354 @@
         <!-- ANAMNÈSE (après étape 1) -->
         <div class="wizard-card hidden" id="wizardStepAnamnese">
           <div class="wizard-card-header">
-            <span class="wizard-step-badge" style="background:#6c47ff">📋</span>
-            <h3>📋 Contexte & Symptômes</h3>
+            <span class="wizard-step-badge">Étape 2</span>
+            <h3>Contexte & Symptômes</h3>
             <p class="wizard-card-desc">Ces informations permettent à l'IA d'affiner considérablement son diagnostic. <strong>1 minute pour un diagnostic 3× plus précis.</strong></p>
           </div>
           <div class="wizard-card-body">
 
-            <!-- Triage démarrage — question clé -->
-            <div class="anamnese-section ana-triage-section">
-              <div class="anamnese-section-title">🔑 Question clé</div>
-              <div class="anamnese-row">
-                <label><strong>Le véhicule démarre-t-il ?</strong></label>
-                <div class="anamnese-checkgrid" style="grid-template-columns:1fr 1fr;max-width:320px">
-                  <label class="ana-check ana-check-large"><input type="radio" name="ana_demarre" value="oui"><span>✅ Oui, il démarre</span></label>
-                  <label class="ana-check ana-check-large"><input type="radio" name="ana_demarre" value="non"><span>❌ Non, il ne démarre pas</span></label>
+            <!-- Barre de progression + bouton tout déplier -->
+            <div class="anamnese-toolbar">
+              <div class="anamnese-progress" id="anamneseProgress">
+                <span class="anamnese-progress-label">Étape <strong id="anaProgressCurrent">1</strong> / <span id="anaProgressTotal">8</span></span>
+                <div class="anamnese-progress-track">
+                  <div class="anamnese-progress-fill" id="anaProgressFill" style="width:12%"></div>
                 </div>
               </div>
+              <button type="button" class="anamnese-expand-all" id="anaExpandAll">Tout déplier</button>
             </div>
 
-            <!-- Chronologie -->
-            <div class="anamnese-section">
-              <div class="anamnese-section-title">⏱ Chronologie</div>
-              <div class="anamnese-row">
-                <label for="ana_depuis">Depuis quand la panne est-elle présente ?</label>
-                <select id="ana_depuis" class="anamnese-select">
-                  <option value="">— Sélectionner</option>
-                  <option value="moins d'une semaine">Moins d'une semaine</option>
-                  <option value="1 à 4 semaines">1 à 4 semaines</option>
-                  <option value="1 à 3 mois">1 à 3 mois</option>
-                  <option value="plus de 3 mois">Plus de 3 mois</option>
-                  <option value="inconnu">Inconnu</option>
-                </select>
-              </div>
-              <div class="anamnese-row">
-                <label for="ana_apres_intervention">Panne apparue après une intervention ? <span class="ana-hint">(si oui, laquelle)</span></label>
-                <input type="text" id="ana_apres_intervention" class="anamnese-input" placeholder="Ex : kit distribution à 200 000 km, remplacement batterie…">
-              </div>
-            </div>
+            <div class="anamnese-accordion" id="anamneseAccordion">
 
-            <!-- Fréquence -->
-            <div class="anamnese-section">
-              <div class="anamnese-section-title">🔄 Fréquence de la panne</div>
-              <div class="anamnese-checkgrid">
-                <label class="ana-check"><input type="radio" name="ana_freq" value="Toujours (panne permanente)"><span>Toujours (permanente)</span></label>
-                <label class="ana-check"><input type="radio" name="ana_freq" value="Aléatoire et imprévisible"><span>Aléatoire / imprévisible</span></label>
-                <label class="ana-check"><input type="radio" name="ana_freq" value="Uniquement à froid"><span>Uniquement à froid</span></label>
-                <label class="ana-check"><input type="radio" name="ana_freq" value="Uniquement à chaud"><span>Uniquement à chaud</span></label>
-                <label class="ana-check"><input type="radio" name="ana_freq" value="Progressive (s'aggrave)"><span>Progressive (s'aggrave)</span></label>
-                <label class="ana-check"><input type="radio" name="ana_freq" value="Intermittente (parfois OK)"><span>Intermittente (parfois OK)</span></label>
-              </div>
-            </div>
-
-            <!-- Moment d'apparition -->
-            <div class="anamnese-section">
-              <div class="anamnese-section-title">📍 Quand la panne survient-elle ?</div>
-              <div class="anamnese-checkgrid">
-                <label class="ana-check"><input type="checkbox" name="ana_moment" value="Au démarrage"><span>Au démarrage</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_moment" value="En roulant"><span>En roulant</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_moment" value="À l'arrêt / ralenti"><span>À l'arrêt / ralenti</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_moment" value="Sous charge (montée, accélération)"><span>Sous charge</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_moment" value="Lors du freinage"><span>Lors du freinage</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_moment" value="Après long trajet"><span>Après long trajet</span></label>
-              </div>
-            </div>
-
-            <!-- Symptômes -->
-            <div class="anamnese-section">
-              <div class="anamnese-section-title">⚠️ Symptômes observés <span class="ana-hint">(plusieurs choix possibles)</span></div>
-              <div class="anamnese-checkgrid">
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Perte de puissance"><span>Perte de puissance</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Démarrage difficile"><span>Démarrage difficile</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Calage / extinction moteur"><span>Calage / extinction</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Vibrations anormales"><span>Vibrations anormales</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Fumée noire"><span>Fumée noire</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Fumée bleue (huile brûlée)"><span>Fumée bleue (huile)</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Fumée blanche (liquide)"><span>Fumée blanche</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Consommation excessive"><span>Conso excessive</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Voyant moteur allumé"><span>Voyant moteur</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Autre voyant allumé"><span>Autre voyant</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Surchauffe moteur"><span>Surchauffe</span></label>
-                <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Régime irrégulier au ralenti"><span>Régime irrégulier</span></label>
-              </div>
-            </div>
-
-            <!-- Description acoustique + Spectrogramme -->
-            <div class="anamnese-section">
-              <div class="anamnese-section-title">🔊 Analyse acoustique <span class="ana-hint">(très important — enregistrez le son ou décrivez-le)</span></div>
-
-              <!-- Enregistreur audio -->
-              <div class="audio-recorder-zone" id="audioRecorderZone">
-                <div class="audio-recorder-controls">
-                  <button type="button" id="btnAudioRecord" class="btn-audio-record">
-                    <span class="btn-audio-icon">🎙️</span>
-                    <span id="btnAudioLabel">Enregistrer le son moteur</span>
-                  </button>
-                  <div id="audioRecordTimer" class="audio-timer hidden">0s / 10s</div>
-                  <button type="button" id="btnAudioStop" class="btn-audio-stop hidden">⏹ Arrêter</button>
-                  <button type="button" id="btnAudioClear" class="btn-audio-clear hidden">🗑 Effacer</button>
+              <!-- 1. Triage démarrage — question clé -->
+              <div class="ana-acc-item open ana-required" data-ana-id="triage" data-ana-fields="ana_demarre">
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Le véhicule démarre-t-il ?</span>
+                  <span class="ana-acc-badge ana-badge-required">Requis</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <div class="anamnese-checkgrid" style="grid-template-columns:1fr 1fr;max-width:380px">
+                    <label class="ana-check ana-check-large ana-check-yes"><input type="radio" name="ana_demarre" value="oui"><span>Oui, il démarre</span></label>
+                    <label class="ana-check ana-check-large ana-check-no"><input type="radio" name="ana_demarre" value="non"><span>Non, il ne démarre pas</span></label>
+                  </div>
                 </div>
-                <!-- Canvas spectrogramme -->
-                <canvas id="spectrogramCanvas" class="spectrogram-canvas hidden" width="600" height="120"></canvas>
-                <!-- Résumé fréquentiel interprété -->
-                <div id="audioAnalysisResult" class="audio-analysis-result hidden"></div>
               </div>
 
-              <div class="ana-or-divider"><span>ou décrivez manuellement</span></div>
+              <!-- 2. Chronologie -->
+              <div class="ana-acc-item" data-ana-id="chronologie" data-ana-fields="ana_depuis,ana_apres_intervention">
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Chronologie</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <div class="anamnese-row">
+                    <label for="ana_depuis">Depuis quand la panne est-elle présente ?</label>
+                    <select id="ana_depuis" class="anamnese-select">
+                      <option value="">— Sélectionner</option>
+                      <option value="moins d'une semaine">Moins d'une semaine</option>
+                      <option value="1 à 4 semaines">1 à 4 semaines</option>
+                      <option value="1 à 3 mois">1 à 3 mois</option>
+                      <option value="plus de 3 mois">Plus de 3 mois</option>
+                      <option value="inconnu">Inconnu</option>
+                    </select>
+                  </div>
+                  <div class="anamnese-row">
+                    <label for="ana_apres_intervention">Panne apparue après une intervention ? <span class="ana-hint">(si oui, laquelle)</span></label>
+                    <input type="text" id="ana_apres_intervention" class="anamnese-input" placeholder="Ex : kit distribution à 200 000 km, remplacement batterie…">
+                  </div>
+                </div>
+              </div>
 
-              <textarea id="ana_sons" class="anamnese-textarea" rows="2" aria-label="Bruits, odeurs ou sensations inhabituelles"
-                placeholder="Cliquetis métallique, sifflement, starter libre sans résistance, bruit de courroie, frottement sourd…"></textarea>
+              <!-- 3. Fréquence -->
+              <div class="ana-acc-item" data-ana-id="frequence" data-ana-fields="ana_freq">
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Fréquence de la panne</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <div class="anamnese-checkgrid">
+                    <label class="ana-check"><input type="radio" name="ana_freq" value="Toujours (panne permanente)"><span>Toujours (permanente)</span></label>
+                    <label class="ana-check"><input type="radio" name="ana_freq" value="Aléatoire et imprévisible"><span>Aléatoire / imprévisible</span></label>
+                    <label class="ana-check"><input type="radio" name="ana_freq" value="Uniquement à froid"><span>Uniquement à froid</span></label>
+                    <label class="ana-check"><input type="radio" name="ana_freq" value="Uniquement à chaud"><span>Uniquement à chaud</span></label>
+                    <label class="ana-check"><input type="radio" name="ana_freq" value="Progressive (s'aggrave)"><span>Progressive (s'aggrave)</span></label>
+                    <label class="ana-check"><input type="radio" name="ana_freq" value="Intermittente (parfois OK)"><span>Intermittente (parfois OK)</span></label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 4. Moment d'apparition (skip si "ne démarre pas") -->
+              <div class="ana-acc-item" data-ana-id="moment" data-ana-fields="ana_moment" data-ana-skip-if='{"ana_demarre":"non"}'>
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Quand la panne survient-elle ?</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <div class="anamnese-checkgrid">
+                    <label class="ana-check"><input type="checkbox" name="ana_moment" value="Au démarrage"><span>Au démarrage</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_moment" value="En roulant"><span>En roulant</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_moment" value="À l'arrêt / ralenti"><span>À l'arrêt / ralenti</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_moment" value="Sous charge (montée, accélération)"><span>Sous charge</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_moment" value="Lors du freinage"><span>Lors du freinage</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_moment" value="Après long trajet"><span>Après long trajet</span></label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5. Symptômes -->
+              <div class="ana-acc-item" data-ana-id="symptomes" data-ana-fields="ana_symptome">
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Symptômes observés</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <p class="ana-acc-help">Plusieurs choix possibles.</p>
+                  <div class="anamnese-checkgrid">
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Perte de puissance"><span>Perte de puissance</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Démarrage difficile"><span>Démarrage difficile</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Calage / extinction moteur"><span>Calage / extinction</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Vibrations anormales"><span>Vibrations anormales</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Fumée noire"><span>Fumée noire</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Fumée bleue (huile brûlée)"><span>Fumée bleue (huile)</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Fumée blanche (liquide)"><span>Fumée blanche</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Consommation excessive"><span>Conso excessive</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Voyant moteur allumé"><span>Voyant moteur</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Autre voyant allumé"><span>Autre voyant</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Surchauffe moteur"><span>Surchauffe</span></label>
+                    <label class="ana-check"><input type="checkbox" name="ana_symptome" value="Régime irrégulier au ralenti"><span>Régime irrégulier</span></label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 6. Acoustique -->
+              <div class="ana-acc-item" data-ana-id="acoustique" data-ana-fields="ana_sons">
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Analyse acoustique</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <p class="ana-acc-help">Très important — enregistrez le son ou décrivez-le.</p>
+                  <div class="audio-recorder-zone" id="audioRecorderZone">
+                    <div class="audio-recorder-controls">
+                      <button type="button" id="btnAudioRecord" class="btn-audio-record">
+                        <svg class="btn-audio-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                        <span id="btnAudioLabel">Enregistrer le son moteur</span>
+                      </button>
+                      <div id="audioRecordTimer" class="audio-timer hidden">0s / 10s</div>
+                      <button type="button" id="btnAudioStop" class="btn-audio-stop hidden">Arrêter</button>
+                      <button type="button" id="btnAudioClear" class="btn-audio-clear hidden">Effacer</button>
+                    </div>
+                    <canvas id="spectrogramCanvas" class="spectrogram-canvas hidden" width="600" height="120"></canvas>
+                    <div id="audioAnalysisResult" class="audio-analysis-result hidden"></div>
+                  </div>
+                  <div class="ana-or-divider"><span>ou décrivez manuellement</span></div>
+                  <textarea id="ana_sons" class="anamnese-textarea" rows="2" aria-label="Bruits, odeurs ou sensations inhabituelles"
+                    placeholder="Cliquetis métallique, sifflement, starter libre sans résistance, bruit de courroie, frottement sourd…"></textarea>
+                </div>
+              </div>
+
+              <!-- 7. Interventions récentes -->
+              <div class="ana-acc-item" data-ana-id="interventions" data-ana-fields="ana_interventions">
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Interventions récentes</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <p class="ana-acc-help">Sur le véhicule, dans les 6 derniers mois.</p>
+                  <textarea id="ana_interventions" class="anamnese-textarea" rows="2" aria-label="Interventions récentes sur le véhicule"
+                    placeholder="Ex : kit distribution à 200 000 km, remplacement batterie, vidange moteur, changement bougies de préchauffage, pompe HP…"></textarea>
+                </div>
+              </div>
+
+              <!-- 8. Informations libres -->
+              <div class="ana-acc-item" data-ana-id="autres" data-ana-fields="ana_infos">
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Autres informations pertinentes</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <textarea id="ana_infos" class="anamnese-textarea" rows="2" aria-label="Autres informations pertinentes"
+                    placeholder="Tout autre détail : nombre de tentatives de démarrage, véhicule relié à un autre par câbles, température extérieure, comportement particulier observé…"></textarea>
+                </div>
+              </div>
+
             </div>
-
-            <!-- Interventions récentes -->
-            <div class="anamnese-section">
-              <div class="anamnese-section-title">🔧 Interventions récentes sur le véhicule <span class="ana-hint">(< 6 mois)</span></div>
-              <textarea id="ana_interventions" class="anamnese-textarea" rows="2" aria-label="Interventions récentes sur le véhicule"
-                placeholder="Ex : kit distribution à 200 000 km, remplacement batterie, vidange moteur, changement bougies de préchauffage, pompe HP…"></textarea>
-            </div>
-
-            <!-- Informations libres -->
-            <div class="anamnese-section">
-              <div class="anamnese-section-title">💬 Autres informations pertinentes</div>
-              <textarea id="ana_infos" class="anamnese-textarea" rows="2" aria-label="Autres informations pertinentes"
-                placeholder="Tout autre détail : nombre de tentatives de démarrage, véhicule relié à un autre par câbles, température extérieure, comportement particulier observé…"></textarea>
-            </div>
-
           </div>
           <div class="wizard-card-actions">
-            <button type="button" class="btn btn-primary" id="btnAnamneseConfirm">✅ Valider le contexte</button>
-            <button type="button" class="btn btn-outline" id="btnAnamneseSkip">Passer cette étape →</button>
+            <button type="button" class="btn btn-primary" id="btnAnamneseConfirm">Valider le contexte</button>
+            <button type="button" class="btn btn-outline" id="btnAnamneseSkip">Passer cette étape</button>
           </div>
           <div class="wizard-card-summary hidden" id="anamneseSummary"></div>
+        </div>
+
+        <!-- BILAN — Étape 2 alternative en mode contrôle (cachée par défaut, affichée par JS si type=controle) -->
+        <div class="wizard-card hidden" id="wizardStepBilan">
+          <div class="wizard-card-header">
+            <span class="wizard-step-badge">Étape 2</span>
+            <h3>Contexte du bilan</h3>
+            <p class="wizard-card-desc">Le type de bilan oriente l'analyse de l'IA. <strong>1 minute pour un bilan ciblé et pertinent.</strong></p>
+          </div>
+          <div class="wizard-card-body">
+
+            <!-- Toolbar progression bilan -->
+            <div class="anamnese-toolbar">
+              <div class="anamnese-progress">
+                <span class="anamnese-progress-label">Étape <strong id="bilanProgressCurrent">1</strong> / <span id="bilanProgressTotal">4</span></span>
+                <div class="anamnese-progress-track">
+                  <div class="anamnese-progress-fill" id="bilanProgressFill" style="width:25%"></div>
+                </div>
+              </div>
+              <button type="button" class="anamnese-expand-all" id="bilanExpandAll">Tout déplier</button>
+            </div>
+
+            <div class="anamnese-accordion" id="bilanAccordion">
+
+              <!-- 1. Type de bilan (REQUIS) -->
+              <div class="ana-acc-item open ana-required" data-ana-id="bilan_type" data-ana-fields="bilan_type">
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Type de bilan</span>
+                  <span class="ana-acc-badge ana-badge-required">Requis</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <div class="bilan-type-grid">
+                    <label class="bilan-type-card">
+                      <input type="radio" name="bilan_type" value="pre_achat">
+                      <div class="bilan-type-card-body">
+                        <div class="bilan-type-icon">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        </div>
+                        <div class="bilan-type-title">Pré-achat</div>
+                        <div class="bilan-type-desc">Vérifier l'état avant l'achat. Détection de signes de fraude, réparations dissimulées.</div>
+                      </div>
+                    </label>
+                    <label class="bilan-type-card">
+                      <input type="radio" name="bilan_type" value="periodique">
+                      <div class="bilan-type-card-body">
+                        <div class="bilan-type-icon">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/></svg>
+                        </div>
+                        <div class="bilan-type-title">Périodique</div>
+                        <div class="bilan-type-desc">Contrôle régulier de routine. Comparaison avec les diagnostics précédents.</div>
+                      </div>
+                    </label>
+                    <label class="bilan-type-card">
+                      <input type="radio" name="bilan_type" value="pre_ct">
+                      <div class="bilan-type-card-body">
+                        <div class="bilan-type-icon">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        </div>
+                        <div class="bilan-type-title">Pré-CT</div>
+                        <div class="bilan-type-desc">Avant contrôle technique. Identification des points qui pourraient bloquer le passage.</div>
+                      </div>
+                    </label>
+                    <label class="bilan-type-card">
+                      <input type="radio" name="bilan_type" value="pre_route">
+                      <div class="bilan-type-card-body">
+                        <div class="bilan-type-icon">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h18"/><path d="m12 3 9 9-9 9"/></svg>
+                        </div>
+                        <div class="bilan-type-title">Pré-route longue</div>
+                        <div class="bilan-type-desc">Avant un long trajet. Focus sur la durabilité : batterie, refroidissement, freinage.</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. Observations visuelles (optionnel) -->
+              <div class="ana-acc-item" data-ana-id="bilan_observations" data-ana-fields="bilan_observation">
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Observations visuelles</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <p class="ana-acc-help">Cochez ce qui est conforme. Ce que vous laissez décoché sera signalé à l'IA comme point d'attention.</p>
+                  <div class="anamnese-checkgrid">
+                    <label class="ana-check"><input type="checkbox" name="bilan_observation" value="Aspect général conforme"><span>Aspect général</span></label>
+                    <label class="ana-check"><input type="checkbox" name="bilan_observation" value="Liquides au niveau"><span>Liquides au niveau</span></label>
+                    <label class="ana-check"><input type="checkbox" name="bilan_observation" value="Pneus en bon état"><span>Pneus en bon état</span></label>
+                    <label class="ana-check"><input type="checkbox" name="bilan_observation" value="Éclairage fonctionnel"><span>Éclairage</span></label>
+                    <label class="ana-check"><input type="checkbox" name="bilan_observation" value="Carrosserie sans dommage"><span>Carrosserie</span></label>
+                    <label class="ana-check"><input type="checkbox" name="bilan_observation" value="Échappement intact"><span>Échappement</span></label>
+                    <label class="ana-check"><input type="checkbox" name="bilan_observation" value="Freins sans bruit"><span>Freins (bruit)</span></label>
+                    <label class="ana-check"><input type="checkbox" name="bilan_observation" value="Suspension sans jeu"><span>Suspension</span></label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3. Notes du contrôle (optionnel) -->
+              <div class="ana-acc-item" data-ana-id="bilan_notes" data-ana-fields="bilan_notes">
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Notes du contrôle</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <p class="ana-acc-help">Tout ce que vous avez vu, entendu ou senti pendant le contrôle visuel.</p>
+                  <textarea id="bilan_notes" class="anamnese-textarea" rows="3" aria-label="Notes du contrôle"
+                    placeholder="Ex : courroie qui siffle légèrement à froid, fuite huile suspectée sous moteur, pneu avant droit usé sur le bord interne…"></textarea>
+                </div>
+              </div>
+
+              <!-- 4. Interventions récentes (optionnel) -->
+              <div class="ana-acc-item" data-ana-id="bilan_interventions" data-ana-fields="bilan_interventions">
+                <button type="button" class="ana-acc-trigger">
+                  <span class="ana-acc-title">Interventions récentes</span>
+                  <span class="ana-acc-summary"></span>
+                  <svg class="ana-acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ana-acc-content">
+                  <p class="ana-acc-help">Sur le véhicule, dans les 6 derniers mois.</p>
+                  <textarea id="bilan_interventions" class="anamnese-textarea" rows="2" aria-label="Interventions récentes"
+                    placeholder="Ex : kit distribution à 200 000 km, vidange moteur, plaquettes avant…"></textarea>
+                </div>
+              </div>
+
+            </div>
+          </div>
+          <div class="wizard-card-actions">
+            <button type="button" class="btn btn-primary" id="btnBilanConfirm">Valider le contexte</button>
+            <button type="button" class="btn btn-outline" id="btnBilanSkip">Passer cette étape</button>
+          </div>
+          <div class="wizard-card-summary hidden" id="bilanSummary"></div>
         </div>
 
         <!-- SCAN MULTI-ECU (après étape 1) -->
         <div class="wizard-card hidden" id="ecuScanSection" style="border:1px solid var(--border);background:var(--bg-card)">
           <div class="wizard-card-header">
-            <span class="wizard-step-badge" style="background:#6c47ff">ECU</span>
-            <h3>🔍 Scan tous modules</h3>
+            <span class="wizard-step-badge">Multi-ECU</span>
+            <h3>Scan tous modules</h3>
             <p class="wizard-card-desc">Lit les codes de défaut de <strong>tous les modules</strong> : ABS, airbag, BCM, climatisation, direction assistée…</p>
           </div>
           <div class="wizard-card-body">
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
               <label for="ecuMakeSelect" style="font-size:.85rem;color:var(--text-muted)">Constructeur :</label>
               <select id="ecuMakeSelect" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-main);font-size:.85rem">
-                <option value="RENAULT">🇫🇷 Renault / Dacia</option>
-                <option value="SKODA">🇨🇿 Skoda / VW / Audi / SEAT</option>
-                <option value="TOYOTA">🇯🇵 Toyota / Lexus</option>
-                <option value="SUZUKI">🇯🇵 Suzuki</option>
-                <option value="FIAT">🇮🇹 Fiat / Alfa Romeo</option>
-                <option value="PEUGEOT">🇫🇷 Peugeot / Citroën / DS</option>
-                <option value="OPEL">🇩🇪 Opel / Vauxhall</option>
-                <option value="FORD">🇺🇸 Ford</option>
-                <option value="BMW">🇩🇪 BMW</option>
-                <option value="MERCEDES">🇩🇪 Mercedes-Benz</option>
-                <option value="GENERIC">🌐 Générique (OBD2 standard)</option>
+                <option value="RENAULT">Renault / Dacia</option>
+                <option value="SKODA">Skoda / VW / Audi / SEAT</option>
+                <option value="TOYOTA">Toyota / Lexus</option>
+                <option value="SUZUKI">Suzuki</option>
+                <option value="FIAT">Fiat / Alfa Romeo</option>
+                <option value="PEUGEOT">Peugeot / Citroën / DS</option>
+                <option value="OPEL">Opel / Vauxhall</option>
+                <option value="FORD">Ford</option>
+                <option value="BMW">BMW</option>
+                <option value="MERCEDES">Mercedes-Benz</option>
+                <option value="GENERIC">Générique (OBD2 standard)</option>
               </select>
-              <button type="button" class="btn btn-primary btn-sm" id="btnRunECUScan">🔍 Lancer le scan</button>
+              <button type="button" class="btn btn-primary btn-sm" id="btnRunECUScan">Lancer le scan</button>
             </div>
             <div id="ecuScanLoading" class="hidden" style="text-align:center;padding:20px">
               <div class="spinner" style="margin:0 auto 10px"></div>
@@ -395,17 +736,16 @@
           </div>
         </div>
 
-        <!-- ÉTAPE 2 : Ralenti -->
+        <!-- ÉTAPE 3 : Ralenti -->
         <div class="wizard-card" id="wizardStep2">
           <div class="wizard-card-header">
-            <span class="wizard-step-badge">Étape 2</span>
-            <h3>🚗 Analyse au ralenti</h3>
+            <span class="wizard-step-badge">Étape 3</span>
+            <h3>Analyse au ralenti</h3>
             <p class="wizard-card-desc">Démarrez le moteur et laissez-le tourner au ralenti pendant 90 secondes.</p>
           </div>
           <div class="wizard-card-body" id="step2Body">
             <div id="step2ContextHint" class="step-context-hint hidden"></div>
             <div class="wizard-instruction-box" id="step2Instruction">
-              <div class="instruction-icon">🔑</div>
               <div class="instruction-text">
                 <strong>Démarrez le moteur</strong>
                 <span>puis cliquez sur "Démarrer la mesure"</span>
@@ -423,24 +763,23 @@
             </div>
           </div>
           <div class="wizard-card-actions" id="step2Actions">
-            <button type="button" class="btn btn-success" id="btnStartStep2">▶ Démarrer la mesure</button>
-            <button type="button" class="btn btn-danger hidden" id="btnStopStep2">⏹ Arrêter la mesure</button>
-            <button type="button" class="btn btn-outline" id="btnSkipStep2">Passer cette étape →</button>
+            <button type="button" class="btn btn-success" id="btnStartStep2">Démarrer la mesure</button>
+            <button type="button" class="btn btn-danger hidden" id="btnStopStep2">Arrêter la mesure</button>
+            <button type="button" class="btn btn-outline" id="btnSkipStep2">Passer cette étape</button>
           </div>
           <div class="wizard-card-summary hidden" id="step2Summary"></div>
         </div>
 
-        <!-- ÉTAPE 3 : Roulant -->
+        <!-- ÉTAPE 4 : Roulant -->
         <div class="wizard-card" id="wizardStep3">
           <div class="wizard-card-header">
-            <span class="wizard-step-badge">Étape 3</span>
-            <h3>🏎️ Analyse en roulant</h3>
+            <span class="wizard-step-badge">Étape 4</span>
+            <h3>Analyse en roulant</h3>
             <p class="wizard-card-desc">Faites un tour de 2 à 3 minutes. L'outil collecte les données sous charge.</p>
           </div>
           <div class="wizard-card-body" id="step3Body">
             <div id="step3ContextHint" class="step-context-hint hidden"></div>
             <div class="wizard-instruction-box" id="step3Instruction">
-              <div class="instruction-icon">🛣️</div>
               <div class="instruction-text">
                 <strong>Partez faire un tour</strong>
                 <span>puis cliquez "J'ai terminé" à votre retour</span>
@@ -458,17 +797,17 @@
             </div>
           </div>
           <div class="wizard-card-actions" id="step3Actions">
-            <button type="button" class="btn btn-success" id="btnStartStep3">▶ Démarrer la mesure</button>
-            <button type="button" class="btn btn-outline" id="btnSkipStep3">Passer cette étape →</button>
+            <button type="button" class="btn btn-success" id="btnStartStep3">Démarrer la mesure</button>
+            <button type="button" class="btn btn-outline" id="btnSkipStep3">Passer cette étape</button>
           </div>
           <div class="wizard-card-summary hidden" id="step3Summary"></div>
         </div>
 
-        <!-- ÉTAPE 4 : Analyse IA -->
+        <!-- ÉTAPE 5 : Analyse IA -->
         <div class="wizard-card" id="wizardStep4">
           <div class="wizard-card-header">
-            <span class="wizard-step-badge">Étape 4</span>
-            <h3>🤖 Analyse IA complète</h3>
+            <span class="wizard-step-badge">Étape 5</span>
+            <h3>Analyse IA complète</h3>
             <p class="wizard-card-desc">L'IA croise les codes DTC, les données au ralenti et en conduite pour un diagnostic précis.</p>
           </div>
           <div class="wizard-card-body">
@@ -481,24 +820,24 @@
           </div>
           <div class="wizard-card-actions" id="step4Actions">
             <div id="anaReminderBanner" class="ana-reminder-banner hidden">
-              📋 <strong>Contexte & Symptômes non renseigné</strong> — remplissez-le pour un diagnostic plus précis
+              <strong>Contexte & Symptômes non renseigné</strong> — remplissez-le pour un diagnostic plus précis
               <button type="button" class="ana-reminder-btn" onclick="anamneseScrollTo()">Remplir maintenant</button>
             </div>
-            <button type="button" class="btn btn-primary btn-lg" id="btnRunAnalysis">🤖 Lancer l'analyse complète</button>
+            <button type="button" class="btn btn-primary btn-lg" id="btnRunAnalysis">Lancer l'analyse complète</button>
           </div>
         </div>
 
         <!-- Action bar (save/export) -->
         <div id="actionBar" class="action-bar hidden">
-          <button type="button" class="btn btn-success" id="btnSave">💾 Sauvegarder</button>
-          <button type="button" class="btn btn-primary" id="btnExportPDF">📄 Exporter PDF</button>
-          <button type="button" class="btn btn-outline" id="btnExportClientPDF">🧾 Fiche client</button>
-          <div class="save-feedback hidden" id="saveFeedback">✅ Diagnostic sauvegardé</div>
+          <button type="button" class="btn btn-success" id="btnSave">Sauvegarder</button>
+          <button type="button" class="btn btn-primary" id="btnExportPDF">Exporter PDF</button>
+          <button type="button" class="btn btn-outline" id="btnExportClientPDF">Fiche client</button>
+          <div class="save-feedback hidden" id="saveFeedback">Diagnostic sauvegardé</div>
         </div>
 
         <!-- Chat IA -->
         <div id="chatSection" class="chat-section hidden">
-          <h3 class="section-title" style="margin-bottom:12px">💬 Assistance IA</h3>
+          <h3 class="section-title" style="margin-bottom:12px">Assistance IA</h3>
           <div id="chatMessages" class="chat-messages">
             <div class="chat-hint">Posez une question sur le diagnostic en cours…</div>
           </div>
@@ -509,15 +848,19 @@
               <span id="audioRecTimer">0s</span>
               <span style="color:var(--text-muted);font-size:.8rem">Enregistrement en cours… (max 8s)</span>
             </div>
-            <button type="button" class="btn btn-danger btn-sm" id="btnStopRecord">⏹ Arrêter</button>
+            <button type="button" class="btn btn-danger btn-sm" id="btnStopRecord">Arrêter</button>
           </div>
           <div id="chatAudioAnalysisResult" class="audio-analysis-result hidden"></div>
           <div class="chat-input-row">
-            <button type="button" class="btn btn-outline btn-sm audio-mic-btn" id="btnRecordAudio" title="Enregistrer un bruit moteur pour analyse IA">🎙️</button>
+            <button type="button" class="btn btn-outline btn-sm audio-mic-btn" id="btnRecordAudio" title="Enregistrer un bruit moteur pour analyse IA" aria-label="Enregistrer un son">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+            </button>
             <textarea id="chatInput" class="chat-input" placeholder="Ex : Que risque-t-il si je roule avec ce code ?" rows="2" aria-label="Message à envoyer à l'assistant IA"></textarea>
             <button type="button" class="btn btn-primary" id="btnChatSend">Envoyer</button>
           </div>
         </div>
+
+        </div><!-- /wizard-content -->
 
         </div><!-- /stepData -->
 
@@ -528,40 +871,138 @@
       <div class="tab-panel hidden" id="tab-dashboard">
         <div class="dash-layout">
 
-          <!-- Date du jour -->
-          <div class="dash-date-bar">
-            <span id="dashDateLabel"></span>
+          <!-- ── Hero header ── -->
+          <div class="page-head">
+            <div class="crumb">
+              <span>Flotte</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+              <span>Tableau de bord</span>
+            </div>
+            <h1 class="page-title" id="dashGreeting">Tableau de bord</h1>
+            <p class="page-sub" id="dashSubtitle">
+              <span id="dashDateLabel"></span>
+            </p>
           </div>
 
-          <!-- Row 1 : Santé + Derniers diagnostics -->
-          <div class="dash-row">
+          <!-- ── Banner alerte critique (rempli par app.js si panne urgente) ── -->
+          <div id="dashCriticalAlert" class="alert-banner hidden">
+            <div class="alert-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+            </div>
+            <div class="alert-body">
+              <div class="alert-title" id="dashCriticalAlertTitle"></div>
+              <div class="alert-desc" id="dashCriticalAlertDesc"></div>
+            </div>
+            <button type="button" class="alert-cta" id="dashCriticalAlertCta">
+              Programmer
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          </div>
 
-            <!-- Santé de la flotte -->
-            <div class="dash-card" id="dashHealthCard">
-              <div class="dash-card-title">🏥 Santé de la flotte</div>
-              <div class="dash-avg-wrap">
-                <div class="dash-avg-score" id="dashAvgScore">--</div>
-                <div class="dash-avg-label" id="dashAvgLabel">Chargement…</div>
+          <!-- ── KPI grid ── -->
+          <div class="kpi-grid" id="kpiGrid">
+            <!-- KPI : flotte -->
+            <div class="kpi" id="kpiFleet">
+              <div class="kpi-head">
+                <div class="kpi-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+                </div>
+                <span class="kpi-trend flat" id="kpiFleetTrend">—</span>
               </div>
-              <div class="dash-health-grid" id="dashHealthGrid">
-                <div class="dash-empty">Aucun véhicule</div>
+              <div class="kpi-value" id="kpiFleetValue">0<span class="kpi-value-suf">véhicules</span></div>
+              <div class="kpi-label">Flotte active</div>
+              <div class="kpi-spark" id="kpiFleetSpark"></div>
+            </div>
+            <!-- KPI : diagnostics ce mois -->
+            <div class="kpi" id="kpiDiags">
+              <div class="kpi-head">
+                <div class="kpi-icon green">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.5.5 0 0 1-.96 0L9.24 2.18a.5.5 0 0 0-.96 0l-2.35 8.36A2 2 0 0 1 4 12H2"/></svg>
+                </div>
+                <span class="kpi-trend flat" id="kpiDiagsTrend">—</span>
+              </div>
+              <div class="kpi-value" id="kpiDiagsValue">0</div>
+              <div class="kpi-label">Diagnostics ce mois</div>
+              <div class="kpi-spark" id="kpiDiagsSpark"></div>
+            </div>
+            <!-- KPI : alertes urgentes -->
+            <div class="kpi" id="kpiAlerts">
+              <div class="kpi-head">
+                <div class="kpi-icon red">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                </div>
+                <span class="kpi-trend flat" id="kpiAlertsTrend">—</span>
+              </div>
+              <div class="kpi-value" id="kpiAlertsValue">0</div>
+              <div class="kpi-label">Alertes urgentes</div>
+              <div class="kpi-spark" id="kpiAlertsSpark"></div>
+            </div>
+            <!-- KPI : score fiabilité -->
+            <div class="kpi" id="kpiScore">
+              <div class="kpi-head">
+                <div class="kpi-icon green">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+                </div>
+                <span class="kpi-trend flat" id="kpiScoreTrend">—</span>
+              </div>
+              <div class="kpi-value" id="kpiScoreValue">--<span class="kpi-value-suf">/100</span></div>
+              <div class="kpi-label">Score fiabilité moyen</div>
+              <div class="kpi-spark" id="kpiScoreSpark"></div>
+            </div>
+          </div>
+
+          <!-- ── Content grid : véhicules (gauche) + activity feed (droite) ── -->
+          <div class="content-grid">
+
+            <!-- Liste véhicules compacte -->
+            <div class="card" id="dashHealthCard">
+              <div class="card-head">
+                <div class="card-title">
+                  Santé de la flotte
+                  <span class="card-title-num" id="dashHealthCount">0</span>
+                </div>
+                <div class="card-action" onclick="switchTab('historique')">
+                  Voir tout
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+                </div>
+              </div>
+              <div class="veh-list" id="dashHealthGrid">
+                <div class="dash-empty" style="padding:32px;text-align:center;color:var(--text-muted)">Aucun véhicule</div>
               </div>
             </div>
 
-            <!-- Derniers diagnostics -->
-            <div class="dash-card dash-card-wide" id="dashDiagsCard">
-              <div class="dash-card-title">📋 Derniers diagnostics</div>
-              <div id="dashRecentDiags">
-                <div class="dash-empty">Aucun diagnostic enregistré</div>
+            <!-- Activity feed -->
+            <div class="card" id="dashActivityCard">
+              <div class="card-head">
+                <div class="card-title">Activité récente</div>
+              </div>
+              <div class="activity-wrap" id="dashActivityFeed">
+                <div class="dash-empty" style="padding:32px;text-align:center;color:var(--text-muted)">Aucune activité</div>
               </div>
             </div>
 
+          </div>
+
+          <!-- ── Chart : Score fiabilité 30 derniers jours ── -->
+          <div class="card" id="dashChartCard">
+            <div class="card-head">
+              <div class="card-title">Score fiabilité moyen — 30 derniers jours</div>
+            </div>
+            <div class="chart-wrap" id="dashChartWrap">
+              <div class="dash-empty" style="padding:32px;text-align:center;color:var(--text-muted)">Données insuffisantes</div>
+            </div>
+          </div>
+
+          <!-- Derniers diagnostics (legacy, conservé pour transition) -->
+          <div class="card hidden" id="dashDiagsCard">
+            <div class="card-head"><div class="card-title">Derniers diagnostics</div></div>
+            <div id="dashRecentDiags" style="padding:14px 22px"></div>
           </div>
 
           <!-- Row 2 : Maintenance -->
           <div class="dash-card dash-card-full" id="dashMaintCard">
             <div class="dash-maint-header">
-              <div class="dash-card-title">🔧 Maintenance &amp; Révisions</div>
+              <div class="dash-card-title">Maintenance &amp; Révisions</div>
               <div class="dash-maint-controls">
                 <select id="dashVehicleSelect" class="dash-select">
                   <option value="">Tous les véhicules</option>
@@ -961,6 +1402,18 @@
             <p class="legal-copyright">© <span id="legalYear"></span> Lyvenia — Tous droits réservés. RODIA est un logiciel propriétaire. Toute reproduction ou distribution non autorisée est interdite.</p>
           </div>
 
+          <!-- Zone de danger -->
+          <div class="settings-block danger-block">
+            <div class="settings-block-title danger-title">Zone de danger</div>
+            <div class="danger-row">
+              <div>
+                <strong>Effacer toutes les données locales</strong>
+                <p>Supprime la flotte, l'historique des diagnostics, les configurations et les préférences. Cette action est <strong>irréversible</strong>.</p>
+              </div>
+              <button type="button" class="btn btn-danger-outline" id="btnEraseAll">Tout effacer</button>
+            </div>
+          </div>
+
           </div><!-- /settings-col-right -->
         </div>
       </div><!-- /tab-parametres -->
@@ -971,18 +1424,96 @@
 
   <!-- ══════════════════ MODALS ══════════════════ -->
 
+  <!-- Modale : Modifier mon nom -->
+  <div class="modal-overlay hidden" id="modalEditName">
+    <div class="modal">
+      <h3>Modifier mon nom</h3>
+      <p>Ce nom apparaît dans le « Bonjour … » du tableau de bord et dans vos initiales d'avatar.</p>
+      <div class="form-row" style="margin-top:12px">
+        <label for="inputUserName">Nom affiché</label>
+        <input type="text" id="inputUserName" class="form-input" placeholder="ex. Marc Dupont" maxlength="40" autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="btnSaveUserName">Enregistrer</button>
+        <button type="button" class="btn btn-outline" id="btnCancelUserName">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale : Raccourcis clavier -->
+  <div class="modal-overlay hidden" id="modalShortcuts">
+    <div class="modal modal-lg">
+      <h3>Raccourcis clavier</h3>
+      <div class="shortcuts-grid">
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Navigation</div>
+          <div class="shortcut-row"><span>Aller au tableau de bord</span><kbd>G</kbd> <kbd>D</kbd></div>
+          <div class="shortcut-row"><span>Aller au diagnostic</span><kbd>G</kbd> <kbd>X</kbd></div>
+          <div class="shortcut-row"><span>Aller aux véhicules</span><kbd>G</kbd> <kbd>V</kbd></div>
+          <div class="shortcut-row"><span>Recherche globale</span><kbd>Ctrl</kbd> <kbd>K</kbd></div>
+        </div>
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Action</div>
+          <div class="shortcut-row"><span>Lancer un diagnostic</span><kbd>Ctrl</kbd> <kbd>D</kbd></div>
+          <div class="shortcut-row"><span>Sauvegarder le diagnostic</span><kbd>Ctrl</kbd> <kbd>S</kbd></div>
+          <div class="shortcut-row"><span>Exporter en PDF</span><kbd>Ctrl</kbd> <kbd>P</kbd></div>
+          <div class="shortcut-row"><span>Fermer la modale active</span><kbd>Échap</kbd></div>
+        </div>
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Affichage</div>
+          <div class="shortcut-row"><span>Basculer clair / sombre</span><kbd>Ctrl</kbd> <kbd>J</kbd></div>
+          <div class="shortcut-row"><span>Ouvrir l'aide</span><kbd>?</kbd></div>
+          <div class="shortcut-row"><span>Démarrer le tour guidé</span><kbd>Ctrl</kbd> <kbd>T</kbd></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="btnCloseShortcuts">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale : Signaler un problème -->
+  <div class="modal-overlay hidden" id="modalReportBug">
+    <div class="modal modal-lg">
+      <h3>Signaler un problème</h3>
+      <p>Décrivez ce qui ne fonctionne pas. Votre client mail s'ouvrira avec le rapport pré-rempli.</p>
+      <div class="form-row" style="margin-top:14px">
+        <label for="bugDescription">Que s'est-il passé ?</label>
+        <textarea id="bugDescription" class="form-input" rows="5" maxlength="2000"
+          placeholder="Ex : J'ai cliqué sur Lancer le diagnostic et la fenêtre s'est figée 5 secondes avant de revenir au menu d'accueil."></textarea>
+      </div>
+      <label class="bug-attach-row">
+        <input type="checkbox" id="bugIncludeSystem" checked>
+        <span>
+          <strong>Joindre les informations système</strong>
+          <span class="bug-attach-hint" id="bugSystemPreview">Version, OS, dernière action — chargement…</span>
+        </span>
+      </label>
+      <div class="bug-attach-row">
+        <span style="color:var(--text-muted);font-size:.78rem">
+          Le rapport sera envoyé à <strong>support@lyvenia.fr</strong>. Aucune donnée n'est envoyée automatiquement — vous gardez le contrôle.
+        </span>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="btnSendBugReport">Ouvrir mon client mail</button>
+        <button type="button" class="btn btn-outline" id="btnCopyBugReport">Copier le rapport</button>
+        <button type="button" class="btn btn-outline" id="btnCancelBugReport">Annuler</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Confirmation effacement DTC -->
   <div class="modal-overlay hidden" id="modalClearDTC">
     <div class="modal">
-      <h3>⚠️ Effacer les codes DTC ?</h3>
+      <h3>Effacer les codes DTC ?</h3>
       <p>Cette action supprime les codes de défaut mémorisés dans l'ECU. Le bus CAN sera mis en pause le temps de l'opération.</p>
       <div class="clear-dtc-checklist">
-        <div class="checklist-item">🔑 Contactez allumé (position ON), moteur tournant ou coupé</div>
-        <div class="checklist-item">📡 Ne pas bouger le câble OBD2 pendant l'opération</div>
-        <div class="checklist-item">⏱️ L'opération prend environ 5 secondes</div>
-        <div class="checklist-item">🚗 Après effacement : roulez 10–15 min pour que l'ECU se recalibre</div>
+        <div class="checklist-item">Contact allumé (position ON), moteur tournant ou coupé</div>
+        <div class="checklist-item">Ne pas bouger le câble OBD2 pendant l'opération</div>
+        <div class="checklist-item">L'opération prend environ 5 secondes</div>
+        <div class="checklist-item">Après effacement : roulez 10–15 min pour que l'ECU se recalibre</div>
       </div>
-      <p class="modal-hint">⚠️ Certains codes permanents (PDTC) ne peuvent pas être effacés par outil — le calculateur les supprime seul après plusieurs cycles sans défaut.</p>
+      <p class="modal-hint"><strong>À noter :</strong> certains codes permanents (PDTC) ne peuvent pas être effacés par outil — le calculateur les supprime seul après plusieurs cycles sans défaut.</p>
       <div class="modal-actions">
         <button type="button" class="btn btn-danger" id="btnConfirmClear">Oui, effacer</button>
         <button type="button" class="btn btn-outline" id="btnCancelClear">Annuler</button>

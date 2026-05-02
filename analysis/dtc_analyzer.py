@@ -1,7 +1,17 @@
 import json
+import time as _t
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeout
 from analysis.vin_decoder import decode_vin, get_recalls_nhtsa, _get_client
 from core.config import load_config
+from core.paths import LOG_PATH
+
+
+def _log(msg: str) -> None:
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"[{_t.strftime('%H:%M:%S')}] [dtc] {msg}\n")
+    except Exception:
+        pass
 
 def _get_models() -> tuple[str, str]:
     """Retourne (model_rapide, model_complet) depuis config ou valeurs par défaut."""
@@ -56,8 +66,8 @@ def _offline_fallback(vin_info: dict, dtc_codes: list) -> dict:
             "description": desc,
             "systeme": "Inconnu",
             "urgence": "SURVEILLER",
-            "causes_probables": ["Diagnostic IA indisponible — analyse hors ligne"],
-            "action": "Connectez-vous à internet pour une analyse complète",
+            "causes_probables": ["Analyse IA indisponible — service en cours de configuration"],
+            "action": "L'analyse IA sera disponible prochainement",
             "fourchette_prix": "N/A",
             "defaut_constructeur_connu": False,
             "rappel_constructeur": False,
@@ -66,7 +76,7 @@ def _offline_fallback(vin_info: dict, dtc_codes: list) -> dict:
     return {
         "vin_info": vin_info,
         "analyse": analyses,
-        "resume": f"Analyse hors ligne — {len(dtc_codes)} code(s) DTC détecté(s). Connexion internet requise pour le diagnostic complet.",
+        "resume": f"Analyse simplifiée — {len(dtc_codes)} code(s) DTC détecté(s). L'analyse IA complète sera disponible prochainement.",
         "statut_global": "SURVEILLER",
         "offline": True,
     }
@@ -300,16 +310,31 @@ def analyze_full_diagnostic(
     vehicle_manual: dict | None = None,
 ) -> dict:
     """Analyse complète croisant DTC + session ralenti + session roulant."""
-    # ── VIN decode + rappels en parallèle pour réduire le temps d'attente ──
+    _log(f"[analyze_full] START vin={vin!r} dtc={dtc_codes} km={km}")
+    t_start = _t.time()
+    # ── VIN decode (timeout strict, pool sans attente de shutdown) ──
+    # NOTE: on n'utilise PAS `with ThreadPoolExecutor` car son __exit__ bloque
+    # indéfiniment sur shutdown(wait=True) si decode_vin hang (ex: Claude Sonnet
+    # sans timeout côté SDK). On force shutdown(wait=False) pour libérer le thread principal.
+    fallback_vin = {"marque": "Inconnu", "modele": "Inconnu", "annee": "", "motorisation": ""}
     if vin and not vin.startswith("MANUEL_"):
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
             fut_vin = pool.submit(decode_vin, vin)
             try:
                 vin_info = fut_vin.result(timeout=10)
-            except Exception:
-                vin_info = {"marque": "Inconnu", "modele": "Inconnu", "annee": "", "motorisation": ""}
+                _log(f"[analyze_full] VIN décodé : {vin_info.get('marque')} {vin_info.get('modele')} ({_t.time()-t_start:.1f}s)")
+            except FutureTimeout:
+                _log(f"[analyze_full] ✗ decode_vin TIMEOUT 10s → fallback")
+                vin_info = fallback_vin
+            except Exception as exc:
+                _log(f"[analyze_full] ✗ decode_vin ERREUR : {exc} → fallback")
+                vin_info = fallback_vin
+        finally:
+            # Libère immédiatement — le thread décode_vin finira en arrière-plan.
+            pool.shutdown(wait=False)
     else:
-        vin_info = {"marque": "Inconnu", "modele": "Inconnu", "annee": "", "motorisation": ""}
+        vin_info = fallback_vin
 
     # Enrichir vin_info avec les infos manuelles si fournies
     if vehicle_manual:
@@ -375,39 +400,64 @@ def analyze_full_diagnostic(
     section_ralenti = fmt_session(session_ralenti, "DONNÉES AU RALENTI")
     section_roulant = fmt_session(session_roulant, "DONNÉES EN ROULANT")
 
-    # ── Anamnèse ────────────────────────────────────────────
+    # ── Mode : panne (par défaut) vs bilan de santé ─────────
+    # Le frontend stocke un flag dans anamnese.bilan_mode quand l'utilisateur
+    # a choisi "Bilan de santé" sur la welcome card.
+    bilan_mode = bool(anamnese and anamnese.get("bilan_mode"))
+    bilan_type_label = (anamnese or {}).get("bilan_type_label", "") if bilan_mode else ""
+
+    # ── Anamnèse / Contexte du bilan ─────────────────────────
     anamnese_str = ""
     if anamnese:
         parts = []
-        depuis = anamnese.get("depuis_quand", "")
-        if depuis: parts.append(f"Depuis quand : {depuis}")
-        apres = anamnese.get("apres_intervention", "").strip()
-        if apres: parts.append(f"⚠️ Panne apparue APRÈS l'intervention : {apres}")
-        freq = anamnese.get("frequence", "")
-        if freq: parts.append(f"Fréquence : {freq}")
-        moments = anamnese.get("moments", [])
-        if moments: parts.append(f"Conditions d'apparition : {', '.join(moments)}")
-        symptomes = anamnese.get("symptomes", [])
-        if symptomes: parts.append(f"Symptômes rapportés : {', '.join(symptomes)}")
-        sons = anamnese.get("sons_decrits", "").strip()
-        if sons: parts.append(f"Description acoustique : {sons}")
-        # Données spectrogramme si disponibles
-        audio_peaks = anamnese.get("audio_peaks")
-        audio_interps = anamnese.get("audio_interpretations")
-        if audio_peaks:
-            peaks_str = ", ".join(f"{p.get('freq')} Hz (intensité {p.get('magnitude')})" for p in audio_peaks[:5])
-            parts.append(f"🎵 Analyse spectrogramme — Fréquences dominantes : {peaks_str}")
-        if audio_interps:
-            parts.append(f"🔬 Interprétation fréquentielle : {' | '.join(audio_interps)}")
-        interventions = anamnese.get("interventions_recentes", "").strip()
-        if interventions: parts.append(f"Interventions récentes (< 6 mois) : {interventions}")
-        infos = anamnese.get("infos_libres", "").strip()
-        if infos: parts.append(f"Infos complémentaires : {infos}")
-        if parts:
-            anamnese_str = (
-                "\n═══ ANAMNÈSE CLIENT ═══\n"
-                + "\n".join(f"  • {p}" for p in parts) + "\n"
-            )
+        if bilan_mode:
+            # Format spécifique au bilan de santé
+            if bilan_type_label:
+                parts.append(f"Type de bilan : {bilan_type_label}")
+            obs = anamnese.get("observations_visuelles", []) or []
+            if obs:
+                parts.append(f"Observations visuelles conformes : {', '.join(obs)}")
+            # Inverse : ce qui n'a PAS été coché est un point d'attention potentiel
+            notes = anamnese.get("notes_controle", "").strip()
+            if notes: parts.append(f"Notes du contrôle : {notes}")
+            interventions = anamnese.get("interventions_recentes", "").strip()
+            if interventions: parts.append(f"Interventions récentes (< 6 mois) : {interventions}")
+            if parts:
+                anamnese_str = (
+                    "\n═══ CONTEXTE DU BILAN DE SANTÉ ═══\n"
+                    + "\n".join(f"  • {p}" for p in parts) + "\n"
+                )
+        else:
+            # Format anamnèse panne (existant)
+            depuis = anamnese.get("depuis_quand", "")
+            if depuis: parts.append(f"Depuis quand : {depuis}")
+            apres = anamnese.get("apres_intervention", "").strip()
+            if apres: parts.append(f"⚠️ Panne apparue APRÈS l'intervention : {apres}")
+            freq = anamnese.get("frequence", "")
+            if freq: parts.append(f"Fréquence : {freq}")
+            moments = anamnese.get("moments", [])
+            if moments: parts.append(f"Conditions d'apparition : {', '.join(moments)}")
+            symptomes = anamnese.get("symptomes", [])
+            if symptomes: parts.append(f"Symptômes rapportés : {', '.join(symptomes)}")
+            sons = anamnese.get("sons_decrits", "").strip()
+            if sons: parts.append(f"Description acoustique : {sons}")
+            # Données spectrogramme si disponibles
+            audio_peaks = anamnese.get("audio_peaks")
+            audio_interps = anamnese.get("audio_interpretations")
+            if audio_peaks:
+                peaks_str = ", ".join(f"{p.get('freq')} Hz (intensité {p.get('magnitude')})" for p in audio_peaks[:5])
+                parts.append(f"🎵 Analyse spectrogramme — Fréquences dominantes : {peaks_str}")
+            if audio_interps:
+                parts.append(f"🔬 Interprétation fréquentielle : {' | '.join(audio_interps)}")
+            interventions = anamnese.get("interventions_recentes", "").strip()
+            if interventions: parts.append(f"Interventions récentes (< 6 mois) : {interventions}")
+            infos = anamnese.get("infos_libres", "").strip()
+            if infos: parts.append(f"Infos complémentaires : {infos}")
+            if parts:
+                anamnese_str = (
+                    "\n═══ ANAMNÈSE CLIENT ═══\n"
+                    + "\n".join(f"  • {p}" for p in parts) + "\n"
+                )
 
     # ── Freeze frame ────────────────────────────────────────
     ff_str = ""
@@ -463,9 +513,13 @@ def analyze_full_diagnostic(
         repair_str = "\n═══ RÉPARATIONS ENREGISTRÉES ═══\n" + "\n".join(lines) + "\n⚠️ Les composants déjà remplacés peuvent être EXCLUS ou signalent une RÉCIDIVE.\n"
 
     # ── Rappels NHTSA (appel réseau, déjà fait en // si possible) ───────────
+    _log(f"[analyze_full] → get_recalls_nhtsa({marque!r}, {modele!r}, {annee!r})")
+    t_nhtsa = _t.time()
     try:
         recalls = get_recalls_nhtsa(marque, modele, annee)
-    except Exception:
+        _log(f"[analyze_full] ← NHTSA {len(recalls)} rappels en {_t.time()-t_nhtsa:.1f}s")
+    except Exception as exc:
+        _log(f"[analyze_full] ✗ NHTSA ERREUR après {_t.time()-t_nhtsa:.1f}s : {exc}")
         recalls = []
     recalls_str = ""
     if recalls:
@@ -490,9 +544,31 @@ def analyze_full_diagnostic(
     if ne_demarre:
         analyses_str += "  ⚠️ Contrainte : le véhicule ne démarre pas — adapter le diagnostic en conséquence.\n"
 
-    prompt = f"""Tu es un expert en diagnostic automobile avec 20 ans d'expérience, spécialisé en diagnostic différentiel.
-Tu dois produire un rapport de diagnostic professionnel, structuré, argumenté et directement exploitable.
+    # ── Mission spécifique selon mode (panne / bilan) ──────────
+    if bilan_mode:
+        # Bilan de santé : pas de panne signalée, on évalue l'état général
+        bilan_focus = {
+            "Pré-achat":                   "Détecter signes de dissimulation, fraude kilométrique, réparations rapides cachées. Identifier risques sous 10 000 km.",
+            "Contrôle périodique":         "Comparer avec l'historique du véhicule. Identifier dérives lentes et tendances d'usure.",
+            "Avant contrôle technique":    "Anticiper points qui font échouer le CT : émissions, freinage, éclairage, châssis, pneus.",
+            "Avant longue route":          "Évaluer la durabilité : batterie, refroidissement, freinage, courroies, niveaux de fluides.",
+        }.get(bilan_type_label, "Évaluer l'état général du véhicule par grand système.")
+        mission_str = (
+            f"MISSION : BILAN DE SANTÉ ({bilan_type_label or 'générique'})\n"
+            f"AUCUNE panne n'est signalée — il s'agit d'un contrôle préventif.\n"
+            f"FOCUS : {bilan_focus}\n"
+            "Tu dois produire un rapport orienté SCORING et MAINTENANCE PRÉVENTIVE, "
+            "pas un diagnostic différentiel curatif.\n"
+        )
+    else:
+        mission_str = (
+            "MISSION : DIAGNOSTIC DE PANNE\n"
+            "Tu dois produire un rapport de diagnostic professionnel, structuré, "
+            "argumenté et directement exploitable.\n"
+        )
 
+    prompt = f"""Tu es un expert en diagnostic automobile avec 20 ans d'expérience, spécialisé en diagnostic différentiel.
+{mission_str}
 VÉHICULE : {marque} {modele} {annee}{f" — {motorisation}" if motorisation else ""} — {f"VIN: {vin}" if vin and not vin.startswith("MANUEL_") else "VIN non lu"} — {km} km
 CODES DTC : {dtc_str if dtc_codes else "AUCUN CODE DTC — diagnostic basé sur les symptômes et le contexte client"}
 {analyses_str}
@@ -607,16 +683,48 @@ RÈGLES STRICTES :
 - Toutes les réponses en FRANÇAIS uniquement
 - Ne jamais inventer de données — si une analyse n'a pas été réalisée, l'indiquer explicitement
 - Si aucun code DTC : baser le diagnostic uniquement sur les symptômes, l'anamnèse et les sessions — utiliser "codes" = [] et mettre toute la valeur dans root_cause_analysis et plan_action
-- Exploite TOUTES les données disponibles — ne laisse aucune preuve non analysée"""
+- Exploite TOUTES les données disponibles — ne laisse aucune preuve non analysée
+""" + ("""
+═══════════════════════════════════════════════════════
+INSTRUCTIONS SPÉCIFIQUES MODE BILAN DE SANTÉ
+═══════════════════════════════════════════════════════
+Étant donné qu'aucune panne n'est signalée, adapte ta réponse :
+
+▸ "codes" : si aucun DTC → laisser []. Si DTC mineurs présents (PDTC anciens, voyants antipollution sans gravité) → les lister mais en "urgence" = "NON URGENT" / "SURVEILLER".
+
+▸ "root_cause_analysis" : remplacer par un BILAN GLOBAL PAR SYSTÈME structuré comme suit :
+   • Moteur : score X/100 — observations clés
+   • Refroidissement : score X/100 — observations clés
+   • Électrique / batterie : score X/100 — observations clés
+   • Carburation / injection : score X/100 — observations clés
+   • Émissions / dépollution : score X/100 — observations clés
+   • Freinage / suspension (si données dispo) : score X/100 — observations clés
+
+▸ "plan_action" : MAINTENANCE PRÉVENTIVE et non curative.
+   - "URGENT" = à faire dans les 1 000 km
+   - "IMPORTANT" = à programmer dans les 5 000 km
+   - "SI NÉCESSAIRE" = à anticiper dans les 15 000 km
+
+▸ "urgence_globale" : "OK" si tout va bien, "SURVEILLER" si points d'attention sans gravité, "URGENT" uniquement si découverte critique inattendue.
+
+▸ "analyse_globale" : doit commencer par "Bilan de santé — " et inclure le score global moyen sur 100.
+
+▸ Adapte la PROFONDEUR du diagnostic différentiel (causes_probables) : si un système est sain, dis-le simplement. N'invente pas de causes pour des codes inexistants.
+
+▸ Si l'utilisateur a coché peu d'observations visuelles conformes (ex: 2 sur 8), considère les non-cochées comme des points de vigilance et mentionne-les dans plan_action.
+""" if bilan_mode else "")
 
     try:
         client = _get_client()
         _, model_complet = _get_models()
+        _log(f"[analyze_full] → Lyvenia messages.create model={model_complet} prompt_len={len(prompt)}")
+        t_ai = _t.time()
         response = client.messages.create(
             model=model_complet,
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
+        _log(f"[analyze_full] ← Lyvenia OK en {_t.time()-t_ai:.1f}s (total {_t.time()-t_start:.1f}s)")
         raw = response.content[0].text.strip()
         for fence in ("```json", "```"):
             if raw.startswith(fence):

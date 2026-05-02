@@ -3,7 +3,8 @@ RODIA Diagnostic — Serveur Flask v2 (architecture restructurée).
 """
 import os
 import sys
-from flask import Flask
+import traceback as _tb
+from flask import Flask, jsonify
 from flask_cors import CORS
 from core.paths import data_path, LOG_PATH
 import time as _t
@@ -97,6 +98,7 @@ from api.analysis_routes import bp as analysis_bp
 from api.fleet_routes import bp as fleet_bp
 from api.export_routes import bp as export_bp
 from api.config_routes import bp as config_bp
+from api.support_routes import bp as support_bp
 from routes.lyvenia_auth import bp as lyvenia_auth_bp
 from routes.update_routes import bp as update_bp
 
@@ -105,8 +107,30 @@ app.register_blueprint(analysis_bp)
 app.register_blueprint(fleet_bp)
 app.register_blueprint(export_bp)
 app.register_blueprint(config_bp)
+app.register_blueprint(support_bp)
 app.register_blueprint(lyvenia_auth_bp)
 app.register_blueprint(update_bp)
+
+
+# ── Error handlers globaux ────────────────────────────────────────────────────
+# Attrape TOUTES les exceptions non gérées dans n'importe quelle route.
+# Sans ceci, une exception dans une route peut tuer le thread Werkzeug (crash silencieux).
+@app.errorhandler(Exception)
+def handle_uncaught_exception(exc):
+    """Catch-all : log + JSON 500 propre, empêche Flask de mourir."""
+    from werkzeug.exceptions import HTTPException
+    # Laisse passer les erreurs HTTP normales (404, 400, etc.)
+    if isinstance(exc, HTTPException):
+        return exc
+    try:
+        _log(f"[GLOBAL_ERROR] {type(exc).__name__}: {exc}\n{_tb.format_exc()}")
+    except Exception:
+        pass
+    return jsonify({
+        "error": "Erreur serveur interne",
+        "type": type(exc).__name__,
+        "message": str(exc)[:300],
+    }), 500
 
 
 if __name__ == "__main__":

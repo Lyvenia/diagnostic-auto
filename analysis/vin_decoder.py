@@ -9,11 +9,21 @@ Pipeline par ordre de priorité :
 import json
 import os
 import re
+import time as _t
 import anthropic
 import requests
-from core.paths import data_path
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from core.paths import data_path, LOG_PATH
 
 _client = None
+
+
+def _log(msg: str) -> None:
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"[{_t.strftime('%H:%M:%S')}] [vin] {msg}\n")
+    except Exception:
+        pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -44,7 +54,15 @@ def _get_api_key() -> str:
 def _get_client():
     global _client
     if _client is None:
-        _client = anthropic.Anthropic(api_key=_get_api_key())
+        try:
+            from core.variant import CLIENT_BUILD
+        except ImportError:
+            CLIENT_BUILD = False
+        if CLIENT_BUILD:
+            from core.lyvenia_client import LyveniaAIClient
+            _client = LyveniaAIClient()
+        else:
+            _client = anthropic.Anthropic(api_key=_get_api_key())
     return _client
 
 
@@ -500,11 +518,18 @@ def get_recalls_nhtsa(make: str, model: str, year: str) -> list:
 # Fallback Claude Sonnet (anti-hallucination renforcé)
 # ─────────────────────────────────────────────────────────────────────────────
 
+_VIN_AI_TIMEOUT = 12  # secondes — garde-fou strict (le SDK Anthropic n'a pas de timeout Python)
+
+
 def decode_vin_ai(vin: str) -> dict | None:
     """
     Décode le VIN via Claude Sonnet.
     Anti-hallucination : règles strictes + confirmation WMI obligatoire.
+    Timeout strict (12s) pour éviter les hangs : si Claude ne répond pas, on abandonne
+    et le thread de fond finit silencieusement.
     """
+    _log(f"[decode_vin_ai] START vin={vin}")
+    t0 = _t.time()
     try:
         # On fournit à Claude les infos WMI déjà connues pour ancrer sa réponse
         local_hint = decode_vin_local(vin)
@@ -512,25 +537,39 @@ def decode_vin_ai(vin: str) -> dict | None:
         if local_hint["marque"] != "Inconnu":
             wmi_context = f"Le WMI '{vin[:3]}' correspond à la marque '{local_hint['marque']}'."
 
-        client = _get_client()
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=200,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"Identifie ce véhicule à partir de son VIN : {vin}\n"
-                    f"{wmi_context}\n"
-                    "RÈGLES STRICTES :\n"
-                    "- Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour\n"
-                    '- Format exact : {"marque": "...", "modele": "...", "annee": "YYYY"}\n'
-                    "- L'année doit être un nombre à 4 chiffres (ex: 2018)\n"
-                    "- Si tu n'es PAS certain à plus de 80%, mets \"Inconnu\" pour ce champ\n"
-                    "- Ne JAMAIS inventer une marque ou un modèle sans être certain\n"
-                    "- La marque doit correspondre au WMI fourni si disponible\n"
-                )
-            }]
-        )
+        def _call_claude():
+            client = _get_client()
+            return client.messages.create(
+                model="claude-sonnet-4-5",
+                max_tokens=200,
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Identifie ce véhicule à partir de son VIN : {vin}\n"
+                        f"{wmi_context}\n"
+                        "RÈGLES STRICTES :\n"
+                        "- Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour\n"
+                        '- Format exact : {"marque": "...", "modele": "...", "annee": "YYYY"}\n'
+                        "- L'année doit être un nombre à 4 chiffres (ex: 2018)\n"
+                        "- Si tu n'es PAS certain à plus de 80%, mets \"Inconnu\" pour ce champ\n"
+                        "- Ne JAMAIS inventer une marque ou un modèle sans être certain\n"
+                        "- La marque doit correspondre au WMI fourni si disponible\n"
+                    )
+                }]
+            )
+
+        # Enforcement timeout strict via pool daemon : si Claude hang, on abandonne.
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
+            fut = pool.submit(_call_claude)
+            try:
+                response = fut.result(timeout=_VIN_AI_TIMEOUT)
+            except FutureTimeout:
+                _log(f"[decode_vin_ai] ✗ TIMEOUT {_VIN_AI_TIMEOUT}s → None")
+                return None
+        finally:
+            pool.shutdown(wait=False)
+
         text = response.content[0].text.strip()
         m = re.search(r'\{[^}]+\}', text)
         if m:
@@ -544,9 +583,10 @@ def decode_vin_ai(vin: str) -> dict | None:
                     and local_hint["marque"].lower() not in marque.lower()
                     and marque.lower() not in local_hint["marque"].lower()):
                 marque = local_hint["marque"]   # on fait confiance au WMI
+            _log(f"[decode_vin_ai] ✓ {marque} {modele} {annee} en {_t.time()-t0:.1f}s")
             return {"vin": vin, "marque": marque, "modele": modele, "annee": annee}
-    except Exception:
-        pass
+    except Exception as exc:
+        _log(f"[decode_vin_ai] ✗ ERREUR après {_t.time()-t0:.1f}s : {exc}")
     return None
 
 
