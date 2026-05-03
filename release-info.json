@@ -1,8 +1,8 @@
 {
-  "version": "1.1.2",
-  "download_url": "https://github.com/Lyvenia/diagnostic-auto/releases/download/v1.1.2/RODIA-Setup-v1.1.2.exe",
-  "release_notes": "# RODIA v1.1.2 — Patch updater\n\nPetit correctif sur le mécanisme de mise à jour automatique.\n\n## Correctifs\n\n- **Fermeture propre lors d'une mise à jour** : la fenêtre de l'ancienne version se ferme désormais automatiquement quand l'installateur se lance, plus besoin de la fermer à la main\n- **Sécurité de l'installation** : le script de mise à jour kill explicitement le process RODIA avant d'écraser les fichiers, évitant les erreurs \"fichier en cours d'utilisation\"\n- **Mécanisme Inno Setup** : ajout de `CloseApplications=yes` / `RestartApplications=yes` pour une transition fluide\n\nAucune action requise — la mise à jour s'installe en 1 clic depuis le bandeau RODIA.\n",
-  "sha256": "e29c7e37fc920267a2715ec135aee1beda00be74176ee214ff3e5b537c0f59a0",
-  "installer": "RODIA-Setup-v1.1.2.exe",
-  "size_bytes": 35931593
+  "version": "1.1.3",
+  "download_url": "https://github.com/Lyvenia/diagnostic-auto/releases/download/v1.1.3/RODIA-Setup-v1.1.3.exe",
+  "release_notes": "Version 1.1.3",
+  "sha256": "faaddbd811459239b697bf4d188d2991f1b7dd8da832239da3f173f192ece6a1",
+  "installer": "RODIA-Setup-v1.1.3.exe",
+  "size_bytes": 35932711
 }

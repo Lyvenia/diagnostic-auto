@@ -59,8 +59,8 @@ def prepare_update_script(download_url: str) -> bool:
     # Script PowerShell autonome :
     #   - Attend 4s que RODIA ait pu se fermer (via os._exit côté Python)
     #   - Télécharge l'installateur
-    #   - Force la fermeture de RODIA s'il reste ouvert (pywebview + os._exit
-    #     ne libère pas toujours la fenêtre Edge → écrasement du .exe bloqué)
+    #   - Force la fermeture de RODIA + de la fenêtre WebView Edge orpheline
+    #     (pywebview spawn msedgewebview2.exe qui survit au os._exit Python)
     #   - Lance l'installateur Inno Setup
     #   - Se supprime
     ps1 = (
@@ -71,13 +71,17 @@ def prepare_update_script(download_url: str) -> bool:
         "try {\n"
         "    Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing\n"
         "    if (Test-Path $installer) {\n"
-        # Force la fermeture de RODIA avant d'écraser les fichiers.
-        # Stop-Process kill le process + ses enfants (la WebView Edge).
-        # ErrorAction SilentlyContinue : si RODIA est déjà fermé, on ignore.
-        "        Stop-Process -Name RODIA -Force -ErrorAction SilentlyContinue\n"
-        "        Start-Sleep -Milliseconds 500\n"
-        # Lance le wizard Inno Setup normalement — l'utilisateur voit la progression
-        # et clique Suivant. Pas de /VERYSILENT : plus simple, plus fiable.
+        # 1. Kill RODIA.exe + tous ses enfants (taskkill /T = kill tree).
+        #    Plus fiable que Stop-Process -Name pour tuer la WebView Edge.
+        "        taskkill /F /T /IM RODIA.exe 2>$null | Out-Null\n"
+        # 2. Filet de sécurité : kill toute fenêtre msedgewebview2 dont le titre
+        #    contient RODIA (la WebView orpheline si le parent est déjà mort).
+        "        Get-Process | Where-Object { $_.MainWindowTitle -like '*RODIA*' } | Stop-Process -Force -ErrorAction SilentlyContinue\n"
+        # 3. Laisse Windows libérer les handles de fichier
+        "        Start-Sleep -Milliseconds 800\n"
+        # 4. Lance l'installateur Inno Setup. Le -Wait garde le PS1 vivant
+        #    jusqu'à la fin de l'install (sinon il tente de Remove le .exe
+        #    pendant qu'il s'exécute encore).
         "        Start-Process -FilePath $installer -Wait\n"
         "        Remove-Item -Path $installer -Force -ErrorAction SilentlyContinue\n"
         "    }\n"

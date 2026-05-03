@@ -10,7 +10,7 @@
 ; ══════════════════════════════════════════════════════════════════════════════
 
 #define AppName      "RODIA"
-#define AppVersion   "1.1.2"
+#define AppVersion   "1.1.3"
 #define AppPublisher "Lyvenia"
 #define AppURL       "https://lyvenia.fr/rodia.html"
 #define AppExeName   "RODIA.exe"
@@ -48,10 +48,11 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
 ; Inno Setup ferme automatiquement RODIA avant l'install (sans rien demander
-; à l'utilisateur) puis le relance après. Évite l'erreur "fichier en cours
-; d'utilisation" lors d'une mise à jour.
+; à l'utilisateur). Évite l'erreur "fichier en cours d'utilisation" lors
+; d'une mise à jour. RestartApplications=no : on laisse [Run] postinstall
+; lancer RODIA — sinon l'app se lance 2 fois.
 CloseApplications=yes
-RestartApplications=yes
+RestartApplications=no
 
 ; Infos désinstallateur
 UninstallDisplayName={#AppName} by {#AppPublisher}
