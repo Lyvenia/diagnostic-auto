@@ -57,9 +57,11 @@ def prepare_update_script(download_url: str) -> bool:
     ps1_path       = os.path.join(tmp_dir, "rodia_update.ps1")
 
     # Script PowerShell autonome :
-    #   - Attend 6s que RODIA se soit bien fermé
+    #   - Attend 4s que RODIA ait pu se fermer (via os._exit côté Python)
     #   - Télécharge l'installateur
-    #   - Lance l'installateur en mode silencieux
+    #   - Force la fermeture de RODIA s'il reste ouvert (pywebview + os._exit
+    #     ne libère pas toujours la fenêtre Edge → écrasement du .exe bloqué)
+    #   - Lance l'installateur Inno Setup
     #   - Se supprime
     ps1 = (
         "$ProgressPreference = 'SilentlyContinue'\n"
@@ -69,6 +71,11 @@ def prepare_update_script(download_url: str) -> bool:
         "try {\n"
         "    Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing\n"
         "    if (Test-Path $installer) {\n"
+        # Force la fermeture de RODIA avant d'écraser les fichiers.
+        # Stop-Process kill le process + ses enfants (la WebView Edge).
+        # ErrorAction SilentlyContinue : si RODIA est déjà fermé, on ignore.
+        "        Stop-Process -Name RODIA -Force -ErrorAction SilentlyContinue\n"
+        "        Start-Sleep -Milliseconds 500\n"
         # Lance le wizard Inno Setup normalement — l'utilisateur voit la progression
         # et clique Suivant. Pas de /VERYSILENT : plus simple, plus fiable.
         "        Start-Process -FilePath $installer -Wait\n"

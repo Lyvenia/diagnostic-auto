@@ -10,7 +10,7 @@
 ; ══════════════════════════════════════════════════════════════════════════════
 
 #define AppName      "RODIA"
-#define AppVersion   "1.1.1"
+#define AppVersion   "1.1.2"
 #define AppPublisher "Lyvenia"
 #define AppURL       "https://lyvenia.fr/rodia.html"
 #define AppExeName   "RODIA.exe"
@@ -46,6 +46,12 @@ WizardResizable=no
 ; Pas besoin d'être administrateur — installe dans AppData si sans droits
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
+
+; Inno Setup ferme automatiquement RODIA avant l'install (sans rien demander
+; à l'utilisateur) puis le relance après. Évite l'erreur "fichier en cours
+; d'utilisation" lors d'une mise à jour.
+CloseApplications=yes
+RestartApplications=yes
 
 ; Infos désinstallateur
 UninstallDisplayName={#AppName} by {#AppPublisher}
