@@ -71,17 +71,26 @@ def prepare_update_script(download_url: str) -> bool:
         "try {\n"
         "    Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing\n"
         "    if (Test-Path $installer) {\n"
-        # 1. Kill RODIA.exe + tous ses enfants (taskkill /T = kill tree).
-        #    Plus fiable que Stop-Process -Name pour tuer la WebView Edge.
-        "        taskkill /F /T /IM RODIA.exe 2>$null | Out-Null\n"
-        # 2. Filet de sécurité : kill toute fenêtre msedgewebview2 dont le titre
-        #    contient RODIA (la WebView orpheline si le parent est déjà mort).
-        "        Get-Process | Where-Object { $_.MainWindowTitle -like '*RODIA*' } | Stop-Process -Force -ErrorAction SilentlyContinue\n"
-        # 3. Laisse Windows libérer les handles de fichier
-        "        Start-Sleep -Milliseconds 800\n"
-        # 4. Lance l'installateur Inno Setup. Le -Wait garde le PS1 vivant
-        #    jusqu'à la fin de l'install (sinon il tente de Remove le .exe
-        #    pendant qu'il s'exécute encore).
+        # ─── KILL RODIA + WebView orpheline en boucle jusqu'à 5s ───
+        # pywebview spawn une WebView Edge dans un process séparé qui peut
+        # survivre au os._exit Python. On tue par nom (RODIA.exe) ET par
+        # titre de fenêtre (msedgewebview2 avec titre contenant "RODIA").
+        # Boucle de garantie : on retente jusqu'à ce qu'il n'y ait plus rien
+        # ou jusqu'au timeout 5s.
+        "        $deadline = (Get-Date).AddSeconds(5)\n"
+        "        while ((Get-Date) -lt $deadline) {\n"
+        "            $alive = Get-Process | Where-Object {\n"
+        "                ($_.ProcessName -eq 'RODIA') -or\n"
+        "                ($_.MainWindowTitle -like '*RODIA*')\n"
+        "            }\n"
+        "            if (-not $alive) { break }\n"
+        "            $alive | Stop-Process -Force -ErrorAction SilentlyContinue\n"
+        "            Start-Sleep -Milliseconds 300\n"
+        "        }\n"
+        # Filet final : taskkill /T pour tuer aussi les sous-processus
+        "        taskkill /F /T /IM RODIA.exe 2>&1 | Out-Null\n"
+        "        Start-Sleep -Milliseconds 500\n"
+        # Lance l'installateur Inno Setup. Le -Wait garde le PS1 vivant.
         "        Start-Process -FilePath $installer -Wait\n"
         "        Remove-Item -Path $installer -Force -ErrorAction SilentlyContinue\n"
         "    }\n"
