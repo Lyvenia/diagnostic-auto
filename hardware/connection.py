@@ -12,8 +12,19 @@ def connect(self):
             "message": "Mode simulation activé",
             "simulation": True,
         }
+
     try:
         import obd
+    except ImportError:
+        # Bibliothèque obd absente (build incomplet) → simulation
+        self.simulation_mode = True
+        return {
+            "success": True,
+            "message": "Bibliothèque OBD non disponible — mode simulation activé",
+            "simulation": True,
+        }
+
+    try:
         self.connection = obd.OBD(
             portstr=self.port,
             baudrate=self.baudrate,
@@ -22,23 +33,34 @@ def connect(self):
         )
         if self.connection.status() == obd.utils.OBDStatus.CAR_CONNECTED:
             self._start_cache_thread()
+            # Mémorise qu'une connexion OBD réelle a fonctionné (évite la migration auto)
+            try:
+                cfg = load_config()
+                cfg["obd_ever_connected"] = True
+                save_config(cfg)
+            except Exception:
+                pass
             return {
                 "success": True,
                 "message": f"Connecté sur {self.port}",
                 "simulation": False,
             }
+        if self.connection:
+            try:
+                self.connection.close()
+            except Exception:
+                pass
         self.connection = None
-        return {
-            "success": False,
-            "simulation": False,
-            "error": f"Aucun véhicule détecté sur {self.port}. Vérifiez que le contact est allumé et que l'adaptateur ELM327 est bien branché.",
-        }
-    except Exception as exc:
-        return {
-            "success": False,
-            "simulation": False,
-            "error": f"Connexion impossible sur {self.port} : {exc}",
-        }
+    except Exception:
+        self.connection = None
+
+    # Aucun adaptateur trouvé → simulation automatique
+    self.simulation_mode = True
+    return {
+        "success": True,
+        "message": "Aucun adaptateur OBD2 détecté — mode simulation activé",
+        "simulation": True,
+    }
 
 
 def disconnect(self):

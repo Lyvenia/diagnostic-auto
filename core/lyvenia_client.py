@@ -3,12 +3,22 @@
 Proxifie les appels vers https://api.lyvenia.fr/ai/analyze et /ai/chat
 en transmettant le JWT stocké localement.
 """
+import time as _t
 import requests
 
 from core.auth_store import get_jwt
+from core.paths import LOG_PATH
 
 LYVENIA_API_URL = "https://api.lyvenia.fr"
-_TIMEOUT = 180  # secondes — les analyses complètes peuvent prendre du temps
+_TIMEOUT = 300  # secondes — analyses Claude Opus complètes (Lyvenia gunicorn = 300s)
+
+
+def _log(msg: str) -> None:
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"[{_t.strftime('%H:%M:%S')}] [Lyvenia] {msg}\n")
+    except Exception:
+        pass
 
 
 class _ContentBlock:
@@ -53,6 +63,9 @@ class _Messages:
             "system": system,
         }
 
+        _log(f"POST /ai/analyze model={model} max_tokens={max_tokens} prompt_len={sum(len(m.get('content', '')) for m in messages)}")
+        t0 = _t.time()
+
         try:
             resp = requests.post(
                 f"{LYVENIA_API_URL}/ai/analyze",
@@ -63,15 +76,20 @@ class _Messages:
                 },
                 timeout=_TIMEOUT,
             )
-        except requests.exceptions.ConnectionError:
+        except requests.exceptions.ConnectionError as e:
+            _log(f"ConnectionError après {_t.time()-t0:.1f}s : {e}")
             raise ConnectionError(
                 "Impossible de contacter le serveur Lyvenia. "
                 "Vérifiez votre connexion internet."
             )
-        except requests.exceptions.Timeout:
+        except requests.exceptions.Timeout as e:
+            _log(f"Timeout après {_t.time()-t0:.1f}s : {e}")
             raise TimeoutError(
                 "Le serveur Lyvenia n'a pas répondu à temps. Réessayez."
             )
+
+        elapsed = _t.time() - t0
+        _log(f"← HTTP {resp.status_code} en {elapsed:.1f}s (taille={len(resp.content)}o)")
 
         if resp.status_code == 401:
             raise PermissionError(
@@ -82,10 +100,25 @@ class _Messages:
                 "Limite d'utilisation atteinte. Réessayez dans quelques instants."
             )
         if not resp.ok:
-            err = resp.json().get("error", resp.text) if resp.content else resp.reason
+            # La réponse peut être HTML (nginx 502/504) ou vide — on parse proprement
+            try:
+                err = resp.json().get("error", resp.text)
+            except Exception:
+                err = (resp.text[:200] if resp.text else None) or resp.reason or f"HTTP {resp.status_code}"
+            _log(f"Erreur serveur : {err}")
             raise RuntimeError(f"Erreur serveur Lyvenia ({resp.status_code}) : {err}")
 
-        data = resp.json()
+        try:
+            data = resp.json()
+        except Exception:
+            _log(f"Réponse non-JSON : {resp.text[:200] if resp.text else '(vide)'}")
+            raise RuntimeError(
+                f"Réponse invalide du serveur Lyvenia (non-JSON). "
+                f"Le service est peut-être en cours de redémarrage. "
+                f"Réponse reçue : {resp.text[:100] if resp.text else '(vide)'}"
+            )
+        content_len = len(data.get("content", "") or "")
+        _log(f"✓ Réponse OK — content={content_len} chars")
         return _Message(data.get("content", ""))
 
 

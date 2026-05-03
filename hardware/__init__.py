@@ -26,8 +26,9 @@ class OBDReader:
         self.port = config.get("port", "COM3")
         self.baudrate = config.get("baudrate", 9600)
         self.timeout = config.get("timeout", 10)
-        # En build client, la simulation est définitivement désactivée
-        self.simulation_mode = False if CLIENT_BUILD else config.get("simulation_mode", False)
+        # Simulation activée par défaut — désactivée si un adaptateur est configuré
+        # CLIENT_BUILD empêche le toggle manuel mais pas la simulation automatique
+        self.simulation_mode = config.get("simulation_mode", True)
         self.connection = None
         self._rt_cache: dict = {}
         self._rt_lock = threading.Lock()

@@ -27,7 +27,8 @@ _TIMEOUT_SHORT = 10  # secondes pour les appels rapides (login, status)
 def auth_status():
     """Retourne l'état de la session Lyvenia.
 
-    En build développeur (CLIENT_BUILD=False) → toujours authentifié.
+    Auth désactivée temporairement — api.lyvenia.fr pas encore déployé.
+    À réactiver quand le backend Lyvenia est opérationnel.
     """
     if not CLIENT_BUILD:
         return jsonify({"authenticated": True, "needs_login": False})

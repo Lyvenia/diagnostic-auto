@@ -6,7 +6,7 @@ from core.paths import data_path, get_base_dir
 
 CONFIG_FILE = data_path("config.json")
 
-_DEFAULT = {"port": "COM3", "baudrate": 9600, "timeout": 10, "simulation_mode": False}
+_DEFAULT = {"port": "COM3", "baudrate": 9600, "timeout": 10, "simulation_mode": True}
 
 
 def _migrate_legacy():
@@ -37,7 +37,18 @@ def load_config() -> dict:
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, encoding="utf-8") as f:
-                return json.load(f)
+                cfg = json.load(f)
+            # Migration : les anciens builds forçaient simulation_mode=False même sans
+            # adaptateur OBD. Si la config n'a jamais enregistré une connexion OBD
+            # réelle, on réinitialise à True pour éviter un crash au démarrage.
+            if not cfg.get("simulation_mode", True) and not cfg.get("obd_ever_connected", False):
+                cfg["simulation_mode"] = True
+                try:
+                    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                        json.dump(cfg, f, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
+            return cfg
         except Exception:
             pass
     return dict(_DEFAULT)

@@ -14,17 +14,31 @@ datas = [
 ]
 binaries = []
 hiddenimports = [
-    'flask', 'flask_cors', 'flask.templating',
-    'anthropic',
-    'obd', 'obd.commands', 'obd.protocols', 'obd.utils', 'obd.elm327', 'obd.decoders',
-    'serial', 'serial.tools', 'serial.tools.list_ports',
-    'reportlab', 'reportlab.lib', 'reportlab.platypus', 'reportlab.pdfbase',
-    'openpyxl', 'openpyxl.styles', 'openpyxl.utils',
-    'pint', 'requests', 'tkinter', 'clr',
+    'flask.templating',  # collect_all('flask') ne capture pas toujours ce sous-module
+    'flask_cors',
+    'tkinter',
     'shared',
 ]
-tmp_ret = collect_all('webview')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+# ── Libs avec ressources lazy-loadées (data files, plugins, fonts, certs) ────
+# Toute lib qui charge des ressources via __file__ ou qui a des plugins
+# dynamiques DOIT passer par collect_all. Sinon → crash silencieux en frozen.
+for _pkg in (
+    'webview',         # pywebview
+    'obd',             # PIDs, decoders, protocoles
+    'reportlab',       # fonts Vera/DarkGarden + metrics _fontdata_*
+    'PIL',             # plugins image (PNG, JPEG, etc.)
+    'anthropic',       # SDK Claude (httpx + JSON schemas)
+    'httpx',           # transport HTTP de anthropic
+    'certifi',         # bundle CA cacert.pem (HTTPS sans ça → SSLError)
+    'requests',        # idem, + charset_normalizer/idna/urllib3
+    'openpyxl',        # XSD schemas + templates XLSX
+    'flask',           # Werkzeug/Jinja2 includes
+    'jinja2',          # templates Flask
+    'serial',          # pyserial (list_ports_windows backend)
+):
+    _d, _b, _h = collect_all(_pkg)
+    datas += _d; binaries += _b; hiddenimports += _h
 
 
 a = Analysis(
@@ -36,7 +50,38 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # Exclusions critiques : ces libs sont dans le venv (deps d'autres projets)
+    # mais RODIA ne les utilise pas. Sans excludes, collect_all('anthropic') &
+    # consorts les tirent quand même → +1.5 Go inutile dans dist/.
+    excludes=[
+        # ML / data science (1.5+ Go combiné)
+        'tensorflow', 'tensorflow_*', 'tensorboard', 'tensorboard_*',
+        'torch', 'torchvision', 'torchaudio', 'torch_*',
+        'sklearn', 'scikit-learn', 'scikit_learn',
+        'scipy', 'pandas',
+        # Vision / vidéo
+        'cv2', 'opencv-python', 'opencv_python',
+        'imageio', 'imageio_ffmpeg', 'av',
+        # Plot / viz
+        'matplotlib', 'seaborn', 'plotly', 'bokeh',
+        # Compilation / runtime ML
+        'llvmlite', 'numba',
+        # Big data formats
+        'h5py', 'tables',  # PyTables
+        'lxml',            # ReportLab/openpyxl peuvent fonctionner sans
+        'pyarrow',
+        # gRPC (pas utilisé)
+        'grpc', 'grpcio',
+        # Transformers / NLP (si présents dans le venv)
+        'transformers', 'tokenizers', 'sentencepiece', 'safetensors',
+        # Notebook / dev
+        'IPython', 'ipykernel', 'ipython', 'jupyter', 'jupyter_*',
+        'notebook', 'jupyterlab', 'qtconsole',
+        # Tests
+        'pytest', 'pytest_*', '_pytest', 'hypothesis',
+        # Doc
+        'sphinx', 'sphinx_*', 'docutils',
+    ],
     noarchive=False,
     optimize=0,
 )
@@ -66,6 +111,27 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    upx_exclude=[],
+    # UPX casse fréquemment les DLL C-extensions (ReportLab _rl_accel, Pillow
+    # _imaging, crypto/SSL, sockets) → crash silencieux au premier appel.
+    upx_exclude=[
+        # ReportLab + Pillow
+        '_rl_accel*.pyd',
+        '_imaging*.pyd',
+        '_imagingft*.pyd',
+        '_imagingcms*.pyd',
+        '_imagingmath*.pyd',
+        '_imagingmorph*.pyd',
+        '_imagingtk*.pyd',
+        # Crypto / SSL / sockets — critique pour requests, anthropic, lyvenia
+        '_ssl*.pyd',
+        '_hashlib*.pyd',
+        '_socket*.pyd',
+        '_cffi*.pyd',
+        'libssl-*.dll',
+        'libcrypto-*.dll',
+        # Runtime
+        'vcruntime140*.dll',
+        'python3*.dll',
+    ],
     name='RODIA',
 )

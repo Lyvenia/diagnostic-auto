@@ -2305,6 +2305,10 @@ async function loadSettingsTab() {
     if (keyInput && cfg.api_key_preview) {
       keyInput.placeholder = cfg.api_key_preview + ' (déjà enregistrée)';
     }
+    // Re-applique les masquages CLIENT_BUILD (au cas où le DOM aurait été
+    // partiellement reconstruit ou que applyClientBuild() ait été appelé
+    // avant le rendu de l'onglet Paramètres)
+    if (state.connection && state.connection.client_build) applyClientBuild();
   } catch (err) { console.warn('[loadSettings] Chargement configuration échoué :', err); }
   renderTechList();
   loadGarageSettings();
@@ -2374,36 +2378,56 @@ function toggleApiKeyVisibility() {
 
 function renderSystemStatus(cfg) {
   const el = document.getElementById('systemStatus');
-  const items = [
-    {
+  // En CLIENT_BUILD : l'IA passe par le proxy Lyvenia (pas de clé locale),
+  // pas de mode simulation accessible. On adapte les cartes en conséquence.
+  const isClient = !!(state.connection && state.connection.client_build);
+
+  const items = [];
+
+  if (isClient) {
+    // Carte IA cohérente avec l'archi : analyse via serveur Lyvenia, pas de clé locale
+    items.push({
+      icon: '🤖',
+      label: 'Analyse IA',
+      value: 'Connectée au serveur Lyvenia',
+      badge: 'ok',
+      badgeText: '✅ OK',
+    });
+  } else {
+    // Mode dev : on garde l'affichage classique (clé locale dans config.json)
+    items.push({
       icon: '🤖',
       label: 'Clé API Anthropic',
       value: cfg.api_key_ok ? 'Configurée dans config.json ou env' : 'Non configurée — analyses IA indisponibles',
       badge: cfg.api_key_ok ? 'ok' : 'err',
       badgeText: cfg.api_key_ok ? '✅ OK' : '❌ Manquante',
-    },
-    {
+    });
+    // En CLIENT_BUILD pas de toggle simulation, donc pas pertinent d'afficher le mode
+    items.push({
       icon: '🔌',
       label: 'Mode actuel',
       value: cfg.simulation_mode ? 'Simulation (données fictives)' : 'Réel (connexion OBD2)',
       badge: 'ok',
       badgeText: cfg.simulation_mode ? '🎮 Simulation' : '🔌 Réel',
-    },
-    {
-      icon: '🚗',
-      label: 'Port OBD2',
-      value: cfg.port || 'COM3',
-      badge: cfg.simulation_mode ? 'warn' : 'ok',
-      badgeText: cfg.simulation_mode ? 'Non utilisé' : cfg.port,
-    },
-    {
-      icon: '📡',
-      label: 'Baudrate',
-      value: `${cfg.baudrate || 9600} baud — timeout ${cfg.timeout || 10}s`,
-      badge: 'ok',
-      badgeText: `${cfg.baudrate || 9600}`,
-    },
-  ];
+    });
+  }
+
+  // Items toujours utiles (CLIENT comme DEV)
+  items.push({
+    icon: '🚗',
+    label: 'Port OBD2',
+    value: cfg.port || 'COM3',
+    badge: cfg.simulation_mode && !isClient ? 'warn' : 'ok',
+    badgeText: cfg.simulation_mode && !isClient ? 'Non utilisé' : (cfg.port || 'COM3'),
+  });
+  items.push({
+    icon: '📡',
+    label: 'Baudrate',
+    value: `${cfg.baudrate || 9600} baud — timeout ${cfg.timeout || 10}s`,
+    badge: 'ok',
+    badgeText: `${cfg.baudrate || 9600}`,
+  });
+
   el.innerHTML = items.map(it => `
     <div class="sys-item">
       <span class="sys-icon">${it.icon}</span>

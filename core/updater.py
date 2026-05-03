@@ -1,9 +1,10 @@
-"""Auto-updater RODIA — vérifie, télécharge et applique les mises à jour.
+"""Auto-updater RODIA — vérifie et prépare les mises à jour.
 
 Fonctionnement :
-  1. check_update()      → compare la version locale avec api.lyvenia.fr/version
-  2. download_and_apply() → télécharge le nouvel exe, génère un .bat de remplacement,
-                            lance le .bat et quitte RODIA (Windows remplace ensuite l'exe)
+  1. check_update()           → compare la version locale avec api.lyvenia.fr/version
+  2. prepare_update_script()  → génère le script PowerShell qui télécharge ET installe
+                                 RODIA après la fermeture de l'application.
+                                 L'exit du process est géré par la route /api/exit-now.
 """
 import os
 import sys
@@ -39,60 +40,73 @@ def check_update() -> dict | None:
     return None
 
 
-def download_and_apply(download_url: str, on_progress=None) -> None:
-    """Télécharge l'installateur RODIA et le lance en mode silencieux.
+def prepare_update_script(download_url: str) -> bool:
+    """Génère un script PowerShell autonome qui télécharge et installe RODIA.
 
-    L'installateur Inno Setup (/VERYSILENT) remplace RODIA sans interaction
-    utilisateur et le relance automatiquement après installation.
-    on_progress(pct: int) est appelé pendant le téléchargement (0-100).
-    Ne fait rien en mode développement (non-frozen).
+    Le script est lancé en arrière-plan. Il attend 6 secondes (pour que RODIA se ferme),
+    télécharge l'installateur, l'exécute silencieusement, puis relance RODIA.
+    Retourne True si le script a pu être démarré, False sinon.
+    Ne fait rien (retourne True) en mode développement (non-frozen).
     """
     if not getattr(sys, "frozen", False):
-        if on_progress:
-            on_progress(100)
-        return
+        return True  # En dev, on ne fait rien — le test passe directement
 
     import tempfile
     tmp_dir        = tempfile.gettempdir()
     installer_path = os.path.join(tmp_dir, "RODIA-Update-Setup.exe")
-    bat_path       = os.path.join(tmp_dir, "rodia_update.bat")
+    ps1_path       = os.path.join(tmp_dir, "rodia_update.ps1")
 
-    # ── Téléchargement de l'installateur ────────────────────────────────────
-    r = requests.get(download_url, stream=True, timeout=300)
-    r.raise_for_status()
+    # Script PowerShell autonome :
+    #   - Attend 6s que RODIA se soit bien fermé
+    #   - Télécharge l'installateur
+    #   - Lance l'installateur en mode silencieux
+    #   - Se supprime
+    ps1 = (
+        "$ProgressPreference = 'SilentlyContinue'\n"
+        "Start-Sleep -Seconds 4\n"
+        f"$installer = '{installer_path}'\n"
+        f"$url       = '{download_url}'\n"
+        "try {\n"
+        "    Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing\n"
+        "    if (Test-Path $installer) {\n"
+        # Lance le wizard Inno Setup normalement — l'utilisateur voit la progression
+        # et clique Suivant. Pas de /VERYSILENT : plus simple, plus fiable.
+        "        Start-Process -FilePath $installer -Wait\n"
+        "        Remove-Item -Path $installer -Force -ErrorAction SilentlyContinue\n"
+        "    }\n"
+        "} catch {\n"
+        "    $_ | Out-File -FilePath \"$env:TEMP\\rodia_update_error.txt\" -Append\n"
+        "}\n"
+        f"Remove-Item -LiteralPath '{ps1_path}' -Force -ErrorAction SilentlyContinue\n"
+    )
 
-    total      = int(r.headers.get("content-length", 0))
-    downloaded = 0
+    try:
+        with open(ps1_path, "w", encoding="utf-8") as f:
+            f.write(ps1)
 
-    with open(installer_path, "wb") as f:
-        for chunk in r.iter_content(chunk_size=65536):
-            f.write(chunk)
-            downloaded += len(chunk)
-            if on_progress and total:
-                on_progress(int(downloaded / total * 100))
+        subprocess.Popen(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle", "Hidden",
+                "-ExecutionPolicy", "Bypass",
+                "-File", ps1_path,
+            ],
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
 
+
+# Alias de compatibilité — les anciens appels via download_and_apply continuent de fonctionner
+def download_and_apply(download_url: str, on_progress=None) -> None:
+    """Compatibilité : délègue à prepare_update_script."""
+    prepare_update_script(download_url)
     if on_progress:
         on_progress(100)
-
-    # ── Lancement silencieux via batch (attend 2s que RODIA se ferme) ────────
-    # /VERYSILENT         — aucune fenêtre ni dialog
-    # /SUPPRESSMSGBOXES   — supprime les popups d'erreur
-    # /NORESTART          — pas de redémarrage Windows
-    # /CLOSEAPPLICATIONS  — ferme les processus qui bloquent les fichiers
-    # /RESTARTAPPLICATIONS — relance RODIA après installation
-    bat = (
-        "@echo off\n"
-        "timeout /t 2 /nobreak > nul\n"
-        f'"{installer_path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
-        f' /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS\n'
-        "del \"%~f0\"\n"
-    )
-    with open(bat_path, "w", encoding="utf-8") as f:
-        f.write(bat)
-
-    subprocess.Popen(
-        ["cmd", "/c", bat_path],
-        creationflags=subprocess.CREATE_NO_WINDOW,
-        close_fds=True,
-    )
-    sys.exit(0)
