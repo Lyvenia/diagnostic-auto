@@ -5387,6 +5387,8 @@ async function startAppData() {
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 
 let _updateDownloadUrl = '';
+let _updateSha256      = '';
+let _updateVersion     = '';
 let _isUpdating        = false;  // garde anti-doublon
 const SNOOZE_KEY       = 'rodia_update_snoozed_until';
 
@@ -5398,6 +5400,8 @@ async function checkForUpdate() {
     const data = await api('GET', '/api/version-info');
     if (data.update_available && data.download_url) {
       _updateDownloadUrl = data.download_url;
+      _updateSha256      = data.sha256 || '';
+      _updateVersion     = data.version || '';
       document.getElementById('updateVersion').textContent =
         `Mise à jour v${data.version} disponible`;
       document.getElementById('updateNotes').textContent =
@@ -5424,19 +5428,27 @@ async function applyUpdate() {
   document.getElementById('updateProgress').style.display = 'flex';
 
   try {
-    // 1. Lance le script PowerShell + programme la fermeture de RODIA dans 5s côté serveur
-    await api('POST', '/api/apply-update', { download_url: _updateDownloadUrl });
+    // 1. Backend : lance le PS1 (download + SHA-256 + kill RODIA + install /VERYSILENT
+    //    + toast Windows à la fin) puis programme la fermeture de Flask dans 5s.
+    await api('POST', '/api/apply-update', {
+      download_url: _updateDownloadUrl,
+      sha256:       _updateSha256,
+      version:      _updateVersion,
+    });
 
-    // 2. Compte à rebours visible (Flask se ferme tout seul dans 5s — pas besoin d'appel supplémentaire)
+    // 2. Compte à rebours visible (mise à jour silencieuse en arrière-plan)
     for (let i = 5; i >= 1; i--) {
-      if (countdownEl) countdownEl.textContent = `Fermeture dans ${i} seconde${i > 1 ? 's' : ''}… L'installation démarrera automatiquement.`;
+      const msg = i > 1
+        ? `Fermeture dans ${i} secondes… La mise à jour s'installe en arrière-plan.`
+        : `Fermeture dans 1 seconde… RODIA se relancera automatiquement.`;
+      if (countdownEl) countdownEl.textContent = msg;
       btn.textContent = `Fermeture dans ${i}s…`;
       await new Promise(r => setTimeout(r, 1000));
     }
 
-    // 3. Le wizard d'installation va s'ouvrir dans quelques secondes
-    if (countdownEl) countdownEl.textContent = 'RODIA se ferme… L\'installateur va s\'ouvrir automatiquement.';
-    btn.textContent = 'Fermeture…';
+    // 3. Message final juste avant que Flask coupe la connexion
+    if (countdownEl) countdownEl.textContent = "Mise à jour en cours… RODIA va se relancer dans quelques secondes.";
+    btn.textContent = 'Mise à jour…';
 
   } catch (e) {
     _isUpdating     = false;

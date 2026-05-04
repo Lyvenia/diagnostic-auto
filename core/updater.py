@@ -40,13 +40,27 @@ def check_update() -> dict | None:
     return None
 
 
-def prepare_update_script(download_url: str) -> bool:
+def prepare_update_script(
+    download_url: str,
+    sha256: str | None = None,
+    version: str | None = None,
+) -> bool:
     """Génère un script PowerShell autonome qui télécharge et installe RODIA.
 
-    Le script est lancé en arrière-plan. Il attend 6 secondes (pour que RODIA se ferme),
-    télécharge l'installateur, l'exécute silencieusement, puis relance RODIA.
-    Retourne True si le script a pu être démarré, False sinon.
-    Ne fait rien (retourne True) en mode développement (non-frozen).
+    Mise à jour silencieuse style Chrome/VSCode :
+      - Aucune fenêtre Inno Setup visible (flags /VERYSILENT /SUPPRESSMSGBOXES /NORESTART)
+      - Vérification SHA-256 du fichier téléchargé (si fourni) — abort si mismatch
+      - Toast Windows à la fin pour confirmer la mise à jour
+      - L'app se relance automatiquement via [Run] postinstall du .iss
+
+    Args:
+        download_url: URL de l'installateur (.exe Inno Setup).
+        sha256: Hash SHA-256 attendu pour vérification d'intégrité (optionnel).
+        version: Version cible (ex: "1.1.4") pour le toast de notification.
+
+    Returns:
+        True si le script PowerShell a pu être démarré, False sinon.
+        Ne fait rien (retourne True) en mode développement (non-frozen).
     """
     if not getattr(sys, "frozen", False):
         return True  # En dev, on ne fait rien — le test passe directement
@@ -55,47 +69,91 @@ def prepare_update_script(download_url: str) -> bool:
     tmp_dir        = tempfile.gettempdir()
     installer_path = os.path.join(tmp_dir, "RODIA-Update-Setup.exe")
     ps1_path       = os.path.join(tmp_dir, "rodia_update.ps1")
+    log_path       = os.path.join(tmp_dir, "rodia_update_error.txt")
 
-    # Script PowerShell autonome :
-    #   - Attend 4s que RODIA ait pu se fermer (via os._exit côté Python)
-    #   - Télécharge l'installateur
-    #   - Force la fermeture de RODIA + de la fenêtre WebView Edge orpheline
-    #     (pywebview spawn msedgewebview2.exe qui survit au os._exit Python)
-    #   - Lance l'installateur Inno Setup
-    #   - Se supprime
+    # Hash + version échappés pour intégration sûre dans le script
+    sha256_safe  = (sha256 or "").lower().strip()
+    version_safe = (version or "nouvelle version").replace("'", "")
+
+    # Script PowerShell autonome — workflow silencieux complet :
+    #   1. Attend 4s pour que RODIA s'auto-ferme (os._exit Python)
+    #   2. Télécharge l'installateur depuis GitHub Releases
+    #   3. Vérifie le SHA-256 si fourni (sécurité — abort si mismatch)
+    #   4. Force la fermeture de RODIA + WebView Edge orpheline (boucle 5s)
+    #   5. Lance l'installateur en /VERYSILENT (aucune fenêtre)
+    #   6. Affiche un toast Windows "RODIA mis à jour"
+    #   7. Se supprime
     ps1 = (
         "$ProgressPreference = 'SilentlyContinue'\n"
+        "$ErrorActionPreference = 'Continue'\n"
         "Start-Sleep -Seconds 4\n"
-        f"$installer = '{installer_path}'\n"
-        f"$url       = '{download_url}'\n"
+        f"$installer    = '{installer_path}'\n"
+        f"$url          = '{download_url}'\n"
+        f"$expectedSha  = '{sha256_safe}'\n"
+        f"$version      = '{version_safe}'\n"
+        f"$logPath      = '{log_path}'\n"
+        "\n"
+        "function Show-Toast([string]$title, [string]$message) {\n"
+        "    try {\n"
+        "        $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime]\n"
+        "        $template = '<toast><visual><binding template=\"ToastGeneric\"><text>' + $title + '</text><text>' + $message + '</text></binding></visual></toast>'\n"
+        "        $xml = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType=WindowsRuntime]::new()\n"
+        "        $xml.LoadXml($template)\n"
+        "        $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)\n"
+        "        [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('RODIA').Show($toast)\n"
+        "    } catch { }  # toast facultatif — pas bloquant\n"
+        "}\n"
+        "\n"
         "try {\n"
+        "    # ── 1. Téléchargement ──\n"
         "    Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing\n"
-        "    if (Test-Path $installer) {\n"
-        # ─── KILL RODIA + WebView orpheline en boucle jusqu'à 5s ───
-        # pywebview spawn une WebView Edge dans un process séparé qui peut
-        # survivre au os._exit Python. On tue par nom (RODIA.exe) ET par
-        # titre de fenêtre (msedgewebview2 avec titre contenant "RODIA").
-        # Boucle de garantie : on retente jusqu'à ce qu'il n'y ait plus rien
-        # ou jusqu'au timeout 5s.
-        "        $deadline = (Get-Date).AddSeconds(5)\n"
-        "        while ((Get-Date) -lt $deadline) {\n"
-        "            $alive = Get-Process | Where-Object {\n"
-        "                ($_.ProcessName -eq 'RODIA') -or\n"
-        "                ($_.MainWindowTitle -like '*RODIA*')\n"
-        "            }\n"
-        "            if (-not $alive) { break }\n"
-        "            $alive | Stop-Process -Force -ErrorAction SilentlyContinue\n"
-        "            Start-Sleep -Milliseconds 300\n"
-        "        }\n"
-        # Filet final : taskkill /T pour tuer aussi les sous-processus
-        "        taskkill /F /T /IM RODIA.exe 2>&1 | Out-Null\n"
-        "        Start-Sleep -Milliseconds 500\n"
-        # Lance l'installateur Inno Setup. Le -Wait garde le PS1 vivant.
-        "        Start-Process -FilePath $installer -Wait\n"
-        "        Remove-Item -Path $installer -Force -ErrorAction SilentlyContinue\n"
+        "    if (-not (Test-Path $installer)) {\n"
+        "        \"[$(Get-Date)] Téléchargement échoué — fichier absent\" | Out-File -FilePath $logPath -Append\n"
+        "        Show-Toast 'RODIA — Mise à jour échouée' 'Le téléchargement a échoué. Réessayez plus tard.'\n"
+        "        exit 1\n"
         "    }\n"
+        "\n"
+        "    # ── 2. Vérification SHA-256 (si fourni) ──\n"
+        "    if ($expectedSha) {\n"
+        "        $actualSha = (Get-FileHash -Path $installer -Algorithm SHA256).Hash.ToLower()\n"
+        "        if ($actualSha -ne $expectedSha) {\n"
+        "            \"[$(Get-Date)] SHA-256 mismatch : attendu $expectedSha / obtenu $actualSha\" | Out-File -FilePath $logPath -Append\n"
+        "            Remove-Item -Path $installer -Force -ErrorAction SilentlyContinue\n"
+        "            Show-Toast 'RODIA — Mise à jour rejetée' 'Le fichier téléchargé est corrompu ou altéré. Mise à jour annulée par sécurité.'\n"
+        "            exit 2\n"
+        "        }\n"
+        "    }\n"
+        "\n"
+        "    # ── 3. Kill RODIA + WebView en boucle jusqu'à 5s ──\n"
+        "    $deadline = (Get-Date).AddSeconds(5)\n"
+        "    while ((Get-Date) -lt $deadline) {\n"
+        "        $alive = Get-Process | Where-Object {\n"
+        "            ($_.ProcessName -eq 'RODIA') -or\n"
+        "            ($_.MainWindowTitle -like '*RODIA*')\n"
+        "        }\n"
+        "        if (-not $alive) { break }\n"
+        "        $alive | Stop-Process -Force -ErrorAction SilentlyContinue\n"
+        "        Start-Sleep -Milliseconds 300\n"
+        "    }\n"
+        "    taskkill /F /T /IM RODIA.exe 2>&1 | Out-Null\n"
+        "    Start-Sleep -Milliseconds 500\n"
+        "\n"
+        "    # ── 4. Installation silencieuse Inno Setup ──\n"
+        "    # /VERYSILENT       : aucune fenêtre d'install visible\n"
+        "    # /SUPPRESSMSGBOXES : pas de popup d'erreur Inno (les vraies erreurs vont en exit code)\n"
+        "    # /NORESTART        : pas de prompt reboot Windows\n"
+        "    $proc = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru\n"
+        "    if ($proc.ExitCode -ne 0) {\n"
+        "        \"[$(Get-Date)] Inno Setup exit code : $($proc.ExitCode)\" | Out-File -FilePath $logPath -Append\n"
+        "        Show-Toast 'RODIA — Mise à jour échouée' \"Erreur d'installation (code $($proc.ExitCode)). Relancez RODIA pour réessayer.\"\n"
+        "    } else {\n"
+        "        Show-Toast 'RODIA mis à jour' \"Version $version installée avec succès.\"\n"
+        "    }\n"
+        "    Remove-Item -Path $installer -Force -ErrorAction SilentlyContinue\n"
+        "\n"
         "} catch {\n"
-        "    $_ | Out-File -FilePath \"$env:TEMP\\rodia_update_error.txt\" -Append\n"
+        "    \"[$(Get-Date)] Exception : $_\" | Out-File -FilePath $logPath -Append\n"
+        "    Show-Toast 'RODIA — Mise à jour échouée' 'Une erreur est survenue. Consultez les logs.'\n"
         "}\n"
         f"Remove-Item -LiteralPath '{ps1_path}' -Force -ErrorAction SilentlyContinue\n"
     )

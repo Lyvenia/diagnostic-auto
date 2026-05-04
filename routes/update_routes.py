@@ -34,26 +34,39 @@ def version_info():
 
 @bp.route("/apply-update", methods=["POST", "GET"])
 def apply_update():
-    """Lance le script PowerShell puis ferme RODIA 5 secondes plus tard.
+    """Lance le script PowerShell d'installation silencieuse puis ferme RODIA 5s plus tard.
 
-    Les 5 secondes laissent le temps au JS de recevoir la réponse 200,
-    afficher le compte à rebours et préparer l'utilisateur à la fermeture.
-    Le script PowerShell attend 6 secondes avant de télécharger — il démarre
-    donc le téléchargement 1 seconde après la fermeture de RODIA.
+    Body JSON :
+        {
+            "download_url": "https://github.com/.../RODIA-Setup-vX.Y.Z.exe",
+            "sha256":       "abc123…" (optionnel — vérification d'intégrité),
+            "version":      "1.1.4" (optionnel — affichée dans le toast Windows)
+        }
+
+    Le script :
+      - télécharge l'installateur
+      - vérifie le SHA-256 si fourni
+      - kill RODIA + WebView Edge
+      - lance Inno Setup en /VERYSILENT (aucune fenêtre)
+      - affiche un toast Windows à la fin
     """
     _log(f"apply-update appelé — method={request.method}")
 
-    # Support JSON body (POST) ou query param ?url= (GET/POST)
-    url = request.args.get("url", "")
+    # Support JSON body (POST) ou query params (GET)
+    url     = request.args.get("url", "")
+    sha256  = request.args.get("sha256", "")
+    version = request.args.get("version", "")
     if not url:
-        data = request.get_json(force=True, silent=True) or {}
-        url  = data.get("download_url", "")
+        data    = request.get_json(force=True, silent=True) or {}
+        url     = data.get("download_url", "")
+        sha256  = sha256 or data.get("sha256", "") or ""
+        version = version or data.get("version", "") or ""
     if not url:
         _log("URL manquante — 400")
         return jsonify({"error": "URL de téléchargement manquante"}), 400
 
-    _log(f"Préparation script PowerShell — url={url[:80]}")
-    ok = prepare_update_script(url)
+    _log(f"Préparation script PowerShell — url={url[:80]} sha256={(sha256 or '')[:12]}… version={version!r}")
+    ok = prepare_update_script(url, sha256=sha256 or None, version=version or None)
     if not ok:
         _log("Échec lancement script PowerShell — 500")
         return jsonify({"error": "Impossible de lancer le script de mise à jour"}), 500
@@ -61,7 +74,7 @@ def apply_update():
     # Fermeture différée : 5s pour que le JS reçoive la réponse et affiche le message.
     def _deferred_exit():
         _t.sleep(5)
-        _log("Fermeture RODIA — le wizard d'installation va s'ouvrir")
+        _log("Fermeture RODIA — l'installation silencieuse continue en arrière-plan")
         os._exit(0)
 
     threading.Thread(target=_deferred_exit, daemon=True).start()
