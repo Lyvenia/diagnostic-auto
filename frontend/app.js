@@ -6464,39 +6464,59 @@ function closeBugReportSetup() {
 
 const TOUR_STEPS = [
   {
-    selector: '#globalSearch',
-    title: 'Recherche globale',
-    text: 'Trouvez n\'importe quel véhicule, code DTC ou technicien en quelques touches. Raccourci : Ctrl + K.',
+    tab: 'diagnostic',
+    selector: '.diag-choice-grid',
+    title: 'Démarrer un diagnostic',
+    text: 'Le cœur de RODIA. Branchez l\'adaptateur OBD2 sur le véhicule, puis choisissez « Diagnostic de panne » si un voyant est allumé, ou « Bilan de santé » pour un contrôle complet.',
     placement: 'bottom',
   },
   {
+    tab: 'diagnostic',
     selector: '.sidebar-nav',
-    title: 'Navigation',
-    text: 'Tableau de bord pour la vue d\'ensemble, Diagnostic pour démarrer une lecture OBD2, Véhicules pour consulter votre flotte.',
+    title: 'Naviguer dans RODIA',
+    text: 'Tableau de bord pour la vue d\'ensemble de la flotte, Diagnostic pour une lecture OBD2, Véhicules pour l\'historique, Paramètres pour la configuration.',
     placement: 'right',
   },
   {
-    selector: '#kpiGrid',
-    title: 'Vos métriques clés',
-    text: 'Flotte active, diagnostics ce mois, alertes urgentes et score fiabilité moyen — tout en un coup d\'œil.',
+    tab: 'diagnostic',
+    selector: '#globalSearchTrigger',
+    title: 'Recherche instantanée',
+    text: 'Retrouvez un véhicule, un code défaut ou un technicien en quelques touches. Raccourci clavier : Ctrl + K.',
     placement: 'bottom',
   },
   {
+    tab: 'dashboard',
+    selector: '#kpiGrid',
+    title: 'Vos indicateurs clés',
+    text: 'Flotte active, diagnostics du mois, alertes urgentes et score de fiabilité moyen — l\'état de votre parc en un coup d\'œil.',
+    placement: 'bottom',
+  },
+  {
+    tab: 'dashboard',
     selector: '#dashHealthCard',
-    title: 'État de la flotte',
-    text: 'Vos véhicules triés par criticité. Cliquez pour ouvrir le détail.',
+    title: 'Santé de la flotte',
+    text: 'Vos véhicules classés par niveau de criticité. Cliquez sur un véhicule pour ouvrir son détail et son historique.',
     placement: 'top',
   },
   {
+    tab: 'dashboard',
     selector: '#dashActivityCard',
     title: 'Activité récente',
-    text: 'Toutes les actions importantes qui se passent sur votre flotte : diagnostics terminés, alertes, maintenances dues.',
+    text: 'Le journal des événements de votre flotte : diagnostics terminés, alertes déclenchées, maintenances à prévoir.',
     placement: 'left',
   },
   {
+    tab: 'dashboard',
+    selector: '#btnHelp',
+    title: 'Aide & support',
+    text: 'Besoin d\'un coup de main ? Le support WhatsApp et la relance de cette visite guidée se trouvent dans ce menu.',
+    placement: 'bottom',
+  },
+  {
+    tab: 'dashboard',
     selector: '#btnThemeToggle',
-    title: 'Mode sombre',
-    text: 'Basculez entre le mode jour et le mode nuit selon vos préférences. Votre choix est mémorisé.',
+    title: 'Mode jour / nuit',
+    text: 'Basculez l\'interface en mode sombre selon vos préférences ou la luminosité de l\'atelier. Votre choix est mémorisé.',
     placement: 'bottom',
   },
 ];
@@ -6504,8 +6524,7 @@ const TOUR_STEPS = [
 let _tourIndex = 0;
 
 function startGuidedTour() {
-  // S'assure d'être sur le tableau de bord
-  if (typeof switchTab === 'function') switchTab('dashboard');
+  // Chaque étape bascule sur son propre onglet (cf. showTourStep)
   _tourIndex = 0;
   ensureTourElements();
   const overlay   = document.getElementById('tourOverlay');
@@ -6568,6 +6587,21 @@ function ensureTourElements() {
 }
 
 function showTourStep(idx) {
+  const step = TOUR_STEPS[idx];
+  if (!step) return;
+  // Bascule sur l'onglet ciblé par l'étape, puis attend le relayout
+  // avant de mesurer la cible (sinon getBoundingClientRect = 0).
+  const activeBtn = document.querySelector('.tab-btn.active');
+  const curTab = activeBtn ? activeBtn.dataset.tab : null;
+  if (step.tab && step.tab !== curTab && typeof switchTab === 'function') {
+    switchTab(step.tab);
+    setTimeout(() => _renderTourStep(idx), 150);
+  } else {
+    _renderTourStep(idx);
+  }
+}
+
+function _renderTourStep(idx) {
   const step = TOUR_STEPS[idx];
   if (!step) return;
   const target = document.querySelector(step.selector);

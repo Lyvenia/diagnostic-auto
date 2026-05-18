@@ -808,12 +808,12 @@ a  { color: var(--accent); text-decoration: none; }
 
 .tour-spotlight {
   position: fixed;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   pointer-events: none;
   box-shadow:
     0 0 0 9999px rgba(15, 22, 19, .55),
-    0 0 0 3px var(--accent),
-    0 0 0 8px rgba(168, 92, 74, .25);
+    0 0 0 2px var(--accent),
+    0 0 0 7px var(--accent-glow);
   transition: all .35s cubic-bezier(.4, 0, .2, 1);
   z-index: 501;
 }
