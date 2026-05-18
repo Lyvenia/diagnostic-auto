@@ -86,6 +86,12 @@ def prepare_update_script(
     ps1 = (
         "$ProgressPreference = 'SilentlyContinue'\n"
         "$ErrorActionPreference = 'Continue'\n"
+        # PS 5.1 négocie TLS 1.0 par défaut → GitHub rejette (connexion coupée).
+        # On force TLS 1.2 (+1.3 si dispo) sinon Invoke-WebRequest échoue.
+        "try { [Net.ServicePointManager]::SecurityProtocol = "
+        "[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}\n"
+        "try { [Net.ServicePointManager]::SecurityProtocol = "
+        "[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls13 } catch {}\n"
         "Start-Sleep -Seconds 4\n"
         f"$installer    = '{installer_path}'\n"
         f"$url          = '{download_url}'\n"
@@ -105,10 +111,14 @@ def prepare_update_script(
         "}\n"
         "\n"
         "try {\n"
-        "    # ── 1. Téléchargement ──\n"
-        "    Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing\n"
-        "    if (-not (Test-Path $installer)) {\n"
-        "        \"[$(Get-Date)] Téléchargement échoué — fichier absent\" | Out-File -FilePath $logPath -Append\n"
+        "    # ── 1. Téléchargement (TLS 1.2 forcé ci-dessus) ──\n"
+        "    try { Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing } catch {}\n"
+        "    # Fallback curl.exe (Windows 10 1803+) — gère TLS nativement\n"
+        "    if ((-not (Test-Path $installer)) -or ((Get-Item $installer -ErrorAction SilentlyContinue).Length -lt 1MB)) {\n"
+        "        & curl.exe -L -s --tlsv1.2 -o $installer $url 2>&1 | Out-Null\n"
+        "    }\n"
+        "    if ((-not (Test-Path $installer)) -or ((Get-Item $installer -ErrorAction SilentlyContinue).Length -lt 1MB)) {\n"
+        "        \"[$(Get-Date)] Téléchargement échoué — fichier absent ou tronqué\" | Out-File -FilePath $logPath -Append\n"
         "        Show-Toast 'RODIA — Mise à jour échouée' 'Le téléchargement a échoué. Réessayez plus tard.'\n"
         "        exit 1\n"
         "    }\n"
@@ -148,6 +158,21 @@ def prepare_update_script(
         "        Show-Toast 'RODIA — Mise à jour échouée' \"Erreur d'installation (code $($proc.ExitCode)). Relancez RODIA pour réessayer.\"\n"
         "    } else {\n"
         "        Show-Toast 'RODIA mis à jour' \"Version $version installée avec succès.\"\n"
+        "        # Relance RODIA — /VERYSILENT + skipifsilent empêchent le [Run]\n"
+        "        # postinstall du .iss, on relance donc explicitement l'exe installé.\n"
+        "        $appExe = $null\n"
+        "        foreach ($root in 'HKCU:','HKLM:') {\n"
+        "            $k = \"$root\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{F3A8B2C1-4D7E-4F9A-B6C3-2E1D5A8F7B90}_is1\"\n"
+        "            try {\n"
+        "                $loc = (Get-ItemProperty -Path $k -ErrorAction Stop).InstallLocation\n"
+        "                if ($loc) { $c = Join-Path $loc 'RODIA.exe'; if (Test-Path $c) { $appExe = $c; break } }\n"
+        "            } catch {}\n"
+        "        }\n"
+        "        if (-not $appExe) {\n"
+        "            $c = Join-Path $env:LOCALAPPDATA 'Programs\\Lyvenia\\RODIA\\RODIA.exe'\n"
+        "            if (Test-Path $c) { $appExe = $c }\n"
+        "        }\n"
+        "        if ($appExe) { Start-Process -FilePath $appExe }\n"
         "    }\n"
         "    Remove-Item -Path $installer -Force -ErrorAction SilentlyContinue\n"
         "\n"
@@ -159,7 +184,10 @@ def prepare_update_script(
     )
 
     try:
-        with open(ps1_path, "w", encoding="utf-8") as f:
+        # UTF-8 AVEC BOM : PowerShell 5.1 lance les .ps1 sans BOM en ANSI
+        # (cp1252) → les accents/tirets cadratins cassent la syntaxe.
+        # Le BOM force la détection UTF-8 et un parsing fiable.
+        with open(ps1_path, "w", encoding="utf-8-sig") as f:
             f.write(ps1)
 
         subprocess.Popen(
