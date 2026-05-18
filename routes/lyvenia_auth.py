@@ -145,3 +145,54 @@ def forgot_password():
         pass  # Toujours retourner OK pour ne pas révéler si l'email existe
 
     return jsonify({"success": True})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  POST /api/auth/change-password
+# ─────────────────────────────────────────────────────────────────────────────
+
+@bp.route("/api/auth/change-password", methods=["POST"])
+def change_password():
+    """Change le mot de passe de l'utilisateur connecté.
+
+    Proxifie vers api.lyvenia.fr/auth/change-password avec le JWT stocké localement.
+    Body attendu : {"old_password": "...", "new_password": "..."}
+    """
+    data         = request.get_json(silent=True) or {}
+    old_password = data.get("old_password") or ""
+    new_password = data.get("new_password") or ""
+
+    if not old_password or not new_password:
+        return jsonify({"success": False, "error": "Ancien et nouveau mot de passe requis"}), 400
+    if len(new_password) < 8:
+        return jsonify({"success": False, "error": "Le nouveau mot de passe doit contenir au moins 8 caractères"}), 400
+
+    token = get_jwt()
+    if not token:
+        return jsonify({"success": False, "error": "Non authentifié — reconnectez-vous"}), 401
+
+    try:
+        resp = requests.post(
+            f"{LYVENIA_API_URL}/auth/change-password",
+            json={"old_password": old_password, "new_password": new_password},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=_TIMEOUT_SHORT,
+        )
+        result = resp.json()
+        if resp.ok and result.get("success"):
+            return jsonify({"success": True})
+        return jsonify({
+            "success": False,
+            "error": result.get("error", "Échec du changement de mot de passe"),
+        }), resp.status_code
+
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            "success": False,
+            "error": "Impossible de contacter le serveur Lyvenia. Vérifiez votre connexion internet.",
+        }), 503
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "success": False,
+            "error": "Le serveur Lyvenia ne répond pas. Réessayez.",
+        }), 503

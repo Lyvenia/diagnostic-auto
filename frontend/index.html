@@ -1241,6 +1241,28 @@
             </div>
           </div>
 
+          <!-- Sécurité — Mot de passe -->
+          <div class="settings-block">
+            <div class="settings-block-title">🔒 Sécurité — Mot de passe</div>
+            <p class="settings-desc">Modifiez votre mot de passe. Recommandé après votre première connexion (le mot de passe reçu par email est temporaire).</p>
+            <div class="settings-form">
+              <div class="settings-row">
+                <label for="pwdOld">Mot de passe actuel :</label>
+                <input type="password" id="pwdOld" class="settings-input" placeholder="••••••••" autocomplete="current-password">
+              </div>
+              <div class="settings-row">
+                <label for="pwdNew">Nouveau mot de passe :</label>
+                <input type="password" id="pwdNew" class="settings-input" placeholder="8 caractères minimum" autocomplete="new-password">
+              </div>
+              <div class="settings-row">
+                <label for="pwdConfirm">Confirmer :</label>
+                <input type="password" id="pwdConfirm" class="settings-input" placeholder="Retapez le nouveau mot de passe" autocomplete="new-password">
+              </div>
+              <button type="button" class="btn btn-primary" id="btnChangePwd">🔒 Changer le mot de passe</button>
+              <span id="pwdStatus" style="margin-left:10px;font-size:.82rem"></span>
+            </div>
+          </div>
+
           <!-- Test de connexion -->
           <div class="settings-block">
             <div class="settings-block-title">🔍 Test de connexion</div>

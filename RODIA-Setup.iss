@@ -115,8 +115,17 @@ Filename: "taskkill.exe"; \
   RunOnceId: "KillRODIA"
 
 ; ── Nettoyage à la désinstallation ────────────────────────────────────────────
-[UninstallDelete]
-; Supprime le dossier RODIA dans AppData (config, logs, flotte)
-; Note : config.json n'est PAS supprimé à chaque install (il contient le JWT de session).
-; La migration Python dans core/config.py corrige simulation_mode au démarrage si besoin.
-Type: filesandordirs; Name: "{userappdata}\RODIA"
+; IMPORTANT : on NE supprime PAS %APPDATA%\RODIA\ à la désinstallation.
+; Ce dossier contient les données utilisateur précieuses :
+;   - flotte.json    : tous les véhicules + historique de diagnostics
+;   - config.json    : JWT de session + préférences
+;   - DiagnosticAuto_error.log
+; Si l'utilisateur désinstalle puis réinstalle (cas normal d'une mise à jour
+; manuelle ou d'une réparation), il retrouve sa flotte et reste authentifié.
+;
+; Pour vraiment tout effacer, l'utilisateur doit :
+;   - soit utiliser la "Zone de danger" des Paramètres dans RODIA
+;   - soit supprimer manuellement %APPDATA%\RODIA\ dans l'Explorateur Windows
+;
+; [UninstallDelete]
+; Type: filesandordirs; Name: "{userappdata}\RODIA"

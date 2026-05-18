@@ -2345,6 +2345,43 @@ async function saveGarageSettings() {
   }
 }
 
+async function changePassword() {
+  const oldP     = document.getElementById('pwdOld').value;
+  const newP     = document.getElementById('pwdNew').value;
+  const confirmP = document.getElementById('pwdConfirm').value;
+  const status   = document.getElementById('pwdStatus');
+  const btn      = document.getElementById('btnChangePwd');
+
+  const setStatus = (msg, ok) => {
+    if (!status) return;
+    status.textContent = msg;
+    status.style.color = ok ? 'var(--success, #16a34a)' : 'var(--danger, #dc2626)';
+  };
+
+  if (!oldP || !newP || !confirmP) return setStatus('Tous les champs sont requis', false);
+  if (newP.length < 8)             return setStatus('8 caractères minimum', false);
+  if (newP !== confirmP)           return setStatus('Les mots de passe ne correspondent pas', false);
+  if (newP === oldP)               return setStatus('Le nouveau doit différer de l\'ancien', false);
+
+  btn.disabled = true;
+  setStatus('Modification…', true);
+
+  try {
+    await api('POST', '/api/auth/change-password', { old_password: oldP, new_password: newP });
+    setStatus('✅ Mot de passe modifié', true);
+    document.getElementById('pwdOld').value = '';
+    document.getElementById('pwdNew').value = '';
+    document.getElementById('pwdConfirm').value = '';
+    toast('Mot de passe modifié avec succès ✅', 'success');
+    setTimeout(() => { if (status) status.textContent = ''; }, 5000);
+  } catch (e) {
+    setStatus('❌ ' + (e.message || 'Échec'), false);
+    toast('Échec du changement de mot de passe : ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /* ── FAQ accordion ─────────────────────────────────────── */
 function toggleFaq(btn) {
   const item = btn.closest('.faq-item');
@@ -3877,6 +3914,7 @@ function setupEvents() {
   document.getElementById('btnDetectPort').addEventListener('click', detectPort);
   document.getElementById('btnTestConn').addEventListener('click', runConnectionTest);
   document.getElementById('btnSaveGarage')?.addEventListener('click', saveGarageSettings);
+  document.getElementById('btnChangePwd')?.addEventListener('click', changePassword);
 
   // Alertes km
   document.getElementById('btnConfirmAlert').addEventListener('click', confirmAddAlert);
