@@ -2,6 +2,9 @@
    RODIA — Thème vert Lyvenia
    ════════════════════════════════════════════════════════ */
 
+/* Utilitaire générique : masquage via classe .hidden (sans sélecteur composé) */
+.hidden { display: none !important; }
+
 /* ════════════════════════════════════════════════════════
    :root = THÈME LIGHT (cream + terracotta) — défaut RODIA v2
    Inspiration site Lyvenia, palette validée Phase 1

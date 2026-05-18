@@ -188,7 +188,8 @@ function renderConnectionBadge() {
     label.textContent = 'Déconnecté';
   } else if (simulation) {
     dot.className = 'badge-dot simulation';
-    label.textContent = 'Simulation';
+    // Build client : pas de mot "Simulation" (peu pro) → état d'attente adaptateur
+    label.textContent = state.connection.client_build ? 'En attente adaptateur' : 'Simulation';
   } else {
     dot.className = 'badge-dot connected';
     label.textContent = `Connecté (${port})`;
