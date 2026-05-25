@@ -27,5 +27,33 @@ def is_client_build() -> bool:
     return os.environ.get("RODIA_CLIENT_BUILD", "").lower() in ("1", "true", "yes")
 
 
-# Constante calculée une seule fois au démarrage
+def is_demo_build() -> bool:
+    """Retourne True si on est en mode démonstration (simulation autorisée).
+
+    Détecté via la variable d'env RODIA_DEMO_BUILD=1 (dev) ou la présence d'un
+    fichier marqueur 'RODIA_DEMO' déposé par le lanceur du paquet démo, soit
+    dans le dossier de données (%APPDATA%\\RODIA), soit à côté de l'exe.
+    """
+    if os.environ.get("RODIA_DEMO_BUILD", "").lower() in ("1", "true", "yes"):
+        return True
+    candidates = []
+    try:
+        from core.paths import DATA_DIR
+        candidates.append(os.path.join(DATA_DIR, "RODIA_DEMO"))
+    except Exception:
+        pass
+    if getattr(sys, "frozen", False):
+        base = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+        candidates += [
+            os.path.join(base, "RODIA_DEMO"),
+            os.path.join(os.path.dirname(sys.executable), "_internal", "RODIA_DEMO"),
+            os.path.join(os.path.dirname(sys.executable), "RODIA_DEMO"),
+        ]
+    return any(os.path.isfile(c) for c in candidates)
+
+
+# Constantes calculées une seule fois au démarrage
 CLIENT_BUILD: bool = is_client_build()
+DEMO_BUILD:   bool = is_demo_build()
+# Client réel = build client SANS marqueur démo → simulation interdite
+REAL_CLIENT:  bool = CLIENT_BUILD and not DEMO_BUILD

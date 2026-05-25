@@ -2,11 +2,19 @@ import time
 import threading
 from core.config import load_config, save_config
 from core.paths import data_path, LOG_PATH
-from core.variant import CLIENT_BUILD
+from core.variant import CLIENT_BUILD, DEMO_BUILD, REAL_CLIENT
 
 
 def connect(self):
-    if self.simulation_mode:
+    """Établit la connexion OBD2. Trois comportements selon la variante :
+
+      - DEV (hors build client) : le flag simulation_mode pilote (toggle dispo).
+      - DÉMO (DEMO_BUILD)        : tente l'adaptateur réel, repli simulation si absent.
+      - CLIENT RÉEL (REAL_CLIENT): tente l'adaptateur réel, AUCUNE simulation —
+                                   message clair « branchez l'adaptateur » si absent.
+    """
+    # Dev : simulation explicite demandée → on simule directement (sans toucher au port).
+    if self.simulation_mode and not CLIENT_BUILD and not DEMO_BUILD:
         return {
             "success": True,
             "message": "Mode simulation activé",
@@ -16,7 +24,14 @@ def connect(self):
     try:
         import obd
     except ImportError:
-        # Bibliothèque obd absente (build incomplet) → simulation
+        if REAL_CLIENT:
+            self.simulation_mode = False
+            return {
+                "success": False,
+                "simulation": False,
+                "error": "Module OBD indisponible sur cette machine. Contactez le support.",
+            }
+        # Dev / démo → repli simulation
         self.simulation_mode = True
         return {
             "success": True,
@@ -32,6 +47,8 @@ def connect(self):
             fast=False,
         )
         if self.connection.status() == obd.utils.OBDStatus.CAR_CONNECTED:
+            # Connexion réelle établie → on bascule tout l'app en mode réel
+            self.simulation_mode = False
             self._start_cache_thread()
             # Mémorise qu'une connexion OBD réelle a fonctionné (évite la migration auto)
             try:
@@ -54,7 +71,18 @@ def connect(self):
     except Exception:
         self.connection = None
 
-    # Aucun adaptateur trouvé → simulation automatique
+    # Aucun adaptateur détecté
+    if REAL_CLIENT:
+        # Client réel : pas de fausses données → on guide l'utilisateur
+        self.simulation_mode = False
+        return {
+            "success": False,
+            "simulation": False,
+            "no_adapter": True,
+            "error": "Aucun adaptateur OBD2 détecté. Branchez votre boîtier ELM327 "
+                     "sur la prise OBD du véhicule, mettez le contact, puis réessayez.",
+        }
+    # Dev / démo → repli simulation automatique
     self.simulation_mode = True
     return {
         "success": True,

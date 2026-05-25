@@ -4,7 +4,7 @@ Chaque sous-module contient des fonctions standalone avec self en premier param�
 """
 import threading
 from core.config import load_config
-from core.variant import CLIENT_BUILD
+from core.variant import CLIENT_BUILD, DEMO_BUILD, REAL_CLIENT
 
 import hardware.connection as _conn
 import hardware.dtc as _dtc
@@ -26,9 +26,13 @@ class OBDReader:
         self.port = config.get("port", "COM3")
         self.baudrate = config.get("baudrate", 9600)
         self.timeout = config.get("timeout", 10)
-        # Simulation activée par défaut — désactivée si un adaptateur est configuré
-        # CLIENT_BUILD empêche le toggle manuel mais pas la simulation automatique
-        self.simulation_mode = config.get("simulation_mode", True)
+        # Client réel : jamais de simulation au démarrage (connect() tente toujours
+        # l'adaptateur, et affiche un message si absent — pas de fausses données).
+        # Dev / démo : simulation activée par défaut (toggle dispo en dev, repli en démo).
+        if REAL_CLIENT:
+            self.simulation_mode = False
+        else:
+            self.simulation_mode = config.get("simulation_mode", True)
         self.connection = None
         self._rt_cache: dict = {}
         self._rt_lock = threading.Lock()
