@@ -3,6 +3,7 @@ Gestionnaire de flotte — stockage JSON local (flotte.json).
 """
 import json
 import os
+import re
 import threading
 from collections import defaultdict
 from datetime import datetime
@@ -10,6 +11,26 @@ from datetime import datetime
 from core.paths import data_path
 
 FLEET_FILE = data_path("flotte.json")
+
+# Caractères VIN valides (ISO 3779 — I, O, Q exclus)
+_VIN_CHARS = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789"
+# Détecte un VIN stocké par erreur sous forme de repr Python bytes/bytearray :
+#   "bytearray(b'VF1FL000358661286')"  ou  "b'VF1FL...'"
+_BYTES_REPR_RE = re.compile(r"b['\"](.*?)['\"]")
+
+
+def _extract_clean_vin(value) -> str:
+    """Extrait un VIN propre depuis une valeur qui peut être une repr bytes.
+
+    Indispensable car d'anciens diagnostics ont enregistré le VIN sous la forme
+    « bytearray(b'VF1FL000358661286') » : filtrer simplement les caractères ne
+    suffit pas (« BYTEARRAY » contient des lettres VIN valides), il faut d'abord
+    extraire le contenu entre les quotes.
+    """
+    s = str(value)
+    m = _BYTES_REPR_RE.search(s)
+    inner = m.group(1) if m else s
+    return "".join(c for c in inner.upper() if c in _VIN_CHARS)
 
 MAINTENANCE_INTERVALS = [
     {"label": "Vidange moteur",            "km": 10_000, "icon": "🛢️"},
@@ -41,10 +62,39 @@ class FleetManager:
         if os.path.exists(FLEET_FILE):
             try:
                 with open(FLEET_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    return self._migrate_vins(json.load(f))
             except Exception:
                 pass
         return {}
+
+    def _migrate_vins(self, fleet: dict) -> dict:
+        """Répare les véhicules dont le VIN a été enregistré en repr bytes
+        (« bytearray(b'...') ») : re-clé le dict avec le VIN propre et corrige
+        le champ 'vin'. Réécrit le fichier si des corrections ont eu lieu."""
+        if not isinstance(fleet, dict):
+            return {}
+        repaired: dict = {}
+        changed = False
+        for key, veh in fleet.items():
+            clean = _extract_clean_vin(key)
+            if not clean or len(clean) < 11:
+                # Clé inexploitable → on garde tel quel pour ne rien perdre
+                repaired.setdefault(key, veh)
+                continue
+            if isinstance(veh, dict) and veh.get("vin") != clean:
+                veh["vin"] = clean
+                changed = True
+            if clean != key:
+                changed = True
+            # Si un véhicule propre existe déjà sous cette clé, on ne l'écrase pas
+            repaired.setdefault(clean, veh)
+        if changed:
+            try:
+                with open(FLEET_FILE, "w", encoding="utf-8") as f:
+                    json.dump(repaired, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+        return repaired
 
     def _save(self):
         """Planifie une écriture disque avec débounce (1,5 s).

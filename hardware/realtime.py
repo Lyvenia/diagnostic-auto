@@ -1,5 +1,24 @@
 import time
 
+# Caractères autorisés par la norme VIN (ISO 3779) — I, O, Q exclus.
+_VIN_CHARS = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789"
+
+
+def clean_vin_value(raw) -> str:
+    """Normalise une valeur VIN renvoyée par python-obd en VIN ASCII propre.
+
+    python-obd renvoie parfois le VIN sous forme de `bytes`/`bytearray`. Faire
+    `str()` dessus produit la repr Python (« bytearray(b'VF1...') »), ce qui
+    casse le décodage ET l'UI (les ' ( ) cassent les onclick inline et les URLs
+    API). On décode donc proprement, puis on ne garde que les caractères VIN
+    valides.
+    """
+    if isinstance(raw, (bytes, bytearray)):
+        s = raw.decode("ascii", errors="ignore")
+    else:
+        s = str(raw)
+    return "".join(c for c in s.upper() if c in _VIN_CHARS)
+
 
 def read_vin(self):
     if self.simulation_mode:
@@ -20,7 +39,7 @@ def read_vin(self):
             try:
                 response = self.connection.query(obd.commands.VIN)
                 if not response.is_null():
-                    vin = str(response.value).strip()
+                    vin = clean_vin_value(response.value)
                     if vin and len(vin) >= 11:
                         return vin
             except Exception as e:

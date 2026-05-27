@@ -638,7 +638,7 @@ async function confirmEditVehicle() {
   const surnom = document.getElementById('editVehicleSurnom').value.trim();
 
   try {
-    await api('PUT', `/api/fleet/vehicle/${state.editingVin}/info`, { code, surnom });
+    await api('PUT', `/api/fleet/vehicle/${encodeURIComponent(state.editingVin)}/info`, { code, surnom });
     closeEditVehicleModal();
     await loadFleet();
     renderFleetManagement();
@@ -696,7 +696,7 @@ async function deleteVehicle(vin) {
   const name = v ? (v.surnom || v.code || `${v.marque || ''} ${v.modele || ''}`.trim() || vin) : vin;
   if (!confirm(`Supprimer le véhicule "${name}" ?\n\nCette action supprime aussi tout l'historique des diagnostics. Cette opération est irréversible.`)) return;
   try {
-    await api('DELETE', `/api/fleet/vehicle/${vin}`);
+    await api('DELETE', `/api/fleet/vehicle/${encodeURIComponent(vin)}`);
     if (state.selectedVin === vin) {
       state.selectedVin = null;
       document.getElementById('historyContainer')?.classList.add('hidden');
@@ -1368,13 +1368,13 @@ async function renderHistory(vin) {
   const container = document.getElementById('historyContainer');
   try {
     const [vehicle, history, repairs] = await Promise.all([
-      api('GET', `/api/fleet/vehicle/${vin}`),
-      api('GET', `/api/fleet/vehicle/${vin}/history`),
-      api('GET', `/api/fleet/vehicle/${vin}/repairs`),
+      api('GET', `/api/fleet/vehicle/${encodeURIComponent(vin)}`),
+      api('GET', `/api/fleet/vehicle/${encodeURIComponent(vin)}/history`),
+      api('GET', `/api/fleet/vehicle/${encodeURIComponent(vin)}/repairs`),
     ]);
 
     let healthData = {};
-    try { healthData = await api('GET', `/api/fleet/vehicle/${vin}/health`); } catch(_) {}
+    try { healthData = await api('GET', `/api/fleet/vehicle/${encodeURIComponent(vin)}/health`); } catch(_) {}
 
     window._currentHistory = { vin, history, vehicle, repairs };
 
@@ -1658,7 +1658,7 @@ async function cycleSuivi(vin, diagId, badgeEl) {
   const nextIdx = (_SUIVI_CYCLE.indexOf(current) + 1) % _SUIVI_CYCLE.length;
   const next    = _SUIVI_CYCLE[nextIdx];
   try {
-    await api('PUT', `/api/fleet/vehicle/${vin}/diagnostic/${diagId}/suivi`, { statut_suivi: next });
+    await api('PUT', `/api/fleet/vehicle/${encodeURIComponent(vin)}/diagnostic/${diagId}/suivi`, { statut_suivi: next });
     badgeEl.dataset.suivi = next;
     const cfg = suiviCfg[next];
     badgeEl.className = `doss-suivi-badge ${cfg.cls}`;
@@ -1681,7 +1681,7 @@ async function saveSuiviNotes(vin, diagId) {
   const textarea = document.getElementById(`notes-${diagId}`);
   if (!textarea) return;
   try {
-    await api('PUT', `/api/fleet/vehicle/${vin}/diagnostic/${diagId}/suivi`, { notes_reparation: textarea.value.trim() });
+    await api('PUT', `/api/fleet/vehicle/${encodeURIComponent(vin)}/diagnostic/${diagId}/suivi`, { notes_reparation: textarea.value.trim() });
     toast('Notes sauvegardées ✅', 'success', 2500);
   } catch(e) { toast('Erreur sauvegarde notes', 'error'); }
 }
@@ -1693,7 +1693,7 @@ async function renderVTabEntretiens(vin, el) {
     const cache  = window._currentHistory || {};
     const hist   = cache.history || [];
     const lastKm = cache.vehicle?.km_manuel || hist[0]?.kilometrage || 0;
-    const items  = await api('GET', `/api/maintenance/vehicle/${vin}`);
+    const items  = await api('GET', `/api/maintenance/vehicle/${encodeURIComponent(vin)}`);
 
     const statusCfg = {
       ok:      { cls: 'maint-ok',      icon: '✅', label: 'OK' },
@@ -1780,7 +1780,7 @@ async function saveMaintDone(vin, itemId) {
   const dtEl = document.getElementById(`maint-dt-${itemId}`);
   if (!kmEl) return;
   try {
-    await api('POST', `/api/maintenance/vehicle/${vin}/done/${itemId}`, { km: parseInt(kmEl.value||0), date: dtEl?.value || '' });
+    await api('POST', `/api/maintenance/vehicle/${encodeURIComponent(vin)}/done/${itemId}`, { km: parseInt(kmEl.value||0), date: dtEl?.value || '' });
     toast('Entretien enregistré ✅', 'success');
     const el = document.getElementById('vtab-content');
     if (el) await renderVTabEntretiens(vin, el);
@@ -1789,7 +1789,7 @@ async function saveMaintDone(vin, itemId) {
 
 async function saveWearState(vin, itemId, state, km) {
   try {
-    await api('PUT', `/api/maintenance/vehicle/${vin}/wear/${itemId}`, { wear_state: state, km });
+    await api('PUT', `/api/maintenance/vehicle/${encodeURIComponent(vin)}/wear/${itemId}`, { wear_state: state, km });
     toast('État mis à jour ✅', 'success');
   } catch(e) { toast('Erreur : ' + e.message, 'error'); }
 }
@@ -1833,7 +1833,7 @@ async function openDocFile(path) {
 
 async function openVehicleFolder(vin) {
   try {
-    await api('POST', `/api/export/open-vehicle/${vin}`, {});
+    await api('POST', `/api/export/open-vehicle/${encodeURIComponent(vin)}`, {});
   } catch(err) { console.warn('[openVehicleFolder] Échec ouverture dossier véhicule :', err); }
 }
 
@@ -1885,7 +1885,7 @@ function renderVTabInfos(vehicle, repairs, vin, el) {
 async function saveVehicleNotes(vin) {
   const notes = document.getElementById('vInfoNotes')?.value || '';
   try {
-    await api('PUT', `/api/fleet/vehicle/${vin}/notes`, { notes });
+    await api('PUT', `/api/fleet/vehicle/${encodeURIComponent(vin)}/notes`, { notes });
     toast('Notes sauvegardées ✅', 'success');
     if (window._currentHistory?.vehicle) window._currentHistory.vehicle.notes = notes;
   } catch(e) { toast('Erreur : ' + e.message, 'error'); }
@@ -1895,7 +1895,7 @@ async function saveKmManuel(vin) {
   const val = parseInt(document.getElementById('kmManuelInput')?.value || '0', 10);
   if (isNaN(val) || val < 0) { toast('Kilométrage invalide', 'error'); return; }
   try {
-    await api('PUT', `/api/fleet/vehicle/${vin}/km`, { km_manuel: val });
+    await api('PUT', `/api/fleet/vehicle/${encodeURIComponent(vin)}/km`, { km_manuel: val });
     if (window._currentHistory?.vehicle) window._currentHistory.vehicle.km_manuel = val;
     await loadFleet();
     toast('Kilométrage mis à jour ✅', 'success');
@@ -2075,8 +2075,8 @@ function closeAlertsModal() { document.getElementById('modalAlerts').classList.a
 async function refreshAlertsList(vin) {
   try {
     const [alerts, hist] = await Promise.all([
-      api('GET', `/api/fleet/vehicle/${vin}/alerts`),
-      api('GET', `/api/fleet/vehicle/${vin}/history`),
+      api('GET', `/api/fleet/vehicle/${encodeURIComponent(vin)}/alerts`),
+      api('GET', `/api/fleet/vehicle/${encodeURIComponent(vin)}/history`),
     ]);
     const lastKm = hist.length ? (hist[0].kilometrage || 0) : 0;
     const el = document.getElementById('alertsList');
@@ -2118,7 +2118,7 @@ async function confirmAddAlert() {
 
 async function deleteAlert(vin, alertId) {
   try {
-    await api('DELETE', `/api/fleet/vehicle/${vin}/alerts/${alertId}`);
+    await api('DELETE', `/api/fleet/vehicle/${encodeURIComponent(vin)}/alerts/${alertId}`);
     toast('Alerte supprimée', 'info');
     await refreshAlertsList(vin);
     await loadKmAlerts();
@@ -3536,7 +3536,7 @@ async function renderDashboardMaintenance(vin) {
   }
   el.innerHTML = '<div class="dash-empty">Chargement…</div>';
   try {
-    const items = await api('GET', `/api/maintenance/vehicle/${vin}`);
+    const items = await api('GET', `/api/maintenance/vehicle/${encodeURIComponent(vin)}`);
     // Grouper par catégorie
     const categories = {};
     for (const item of items) {
@@ -3558,7 +3558,7 @@ async function renderDashboardMaintenance(vin) {
         const itemId    = sel.dataset.itemId;
         const wearState = sel.value;
         const km = _dashData?.health?.[vin]?.km_actuel || 0;
-        await api('PUT', `/api/maintenance/vehicle/${vin}/wear/${itemId}`, { wear_state: wearState, km });
+        await api('PUT', `/api/maintenance/vehicle/${encodeURIComponent(vin)}/wear/${itemId}`, { wear_state: wearState, km });
         await renderDashboardMaintenance(vin);
         await reloadMaintAlerts();
         toast('État d\'usure mis à jour', 'success', 2000);
@@ -3668,7 +3668,7 @@ async function confirmMarkDone() {
   const btn = document.getElementById('mdConfirm');
   if (btn) btn.disabled = true;
   try {
-    await api('POST', `/api/maintenance/vehicle/${vin}/done/${itemId}`, { date, km });
+    await api('POST', `/api/maintenance/vehicle/${encodeURIComponent(vin)}/done/${itemId}`, { date, km });
     document.getElementById('modalMarkDone').classList.add('hidden');
     await renderDashboardMaintenance(vin);
     await reloadMaintAlerts();
@@ -3815,7 +3815,7 @@ function setupEvents() {
 
     // Charger les réparations et pré-remplir le champ interventions récentes
     try {
-      const repairs = await api('GET', `/api/fleet/vehicle/${vin}/repairs`);
+      const repairs = await api('GET', `/api/fleet/vehicle/${encodeURIComponent(vin)}/repairs`);
       if (Array.isArray(repairs) && repairs.length > 0) {
         const lines = repairs.slice(0, 5).map(r => {
           const parts = [r.date_affichage || r.date || ''];
@@ -4008,7 +4008,7 @@ function setupEvents() {
     try {
       await api('POST', '/api/fleet/vehicle', { vin, vin_info });
       // Appliquer surnom si renseigné
-      if (surnom) await api('PUT', `/api/fleet/vehicle/${vin}/info`, { surnom }).catch(() => {});
+      if (surnom) await api('PUT', `/api/fleet/vehicle/${encodeURIComponent(vin)}/info`, { surnom }).catch(() => {});
       await loadFleet();
       document.getElementById('modalAddVehicle').classList.add('hidden');
       toast(`${marque} ${modele} ajouté à la flotte ✅`, 'success', 3000);
