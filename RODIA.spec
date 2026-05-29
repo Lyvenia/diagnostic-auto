@@ -11,6 +11,7 @@ datas = [
     ('frontend',     'frontend'),
     ('icon.ico',     '.'),
     ('RODIA_CLIENT', '.'),      # ← Marqueur build client
+    ('analysis/dtc_codes.json', 'analysis'),  # Base DTC locale
 ]
 binaries = []
 hiddenimports = [

@@ -68,11 +68,23 @@ def _load_frontend_cache():
 _load_frontend_cache()
 
 
+# Headers anti-cache : Edge cache trop agressivement sous --user-data-dir stable
+# → un app.js mis à jour n'est jamais rechargé. On force un fetch à chaque load.
+_NO_CACHE = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma":        "no-cache",
+    "Expires":       "0",
+}
+
+def _with_no_cache(content: str, mime: str):
+    return content, 200, {"Content-Type": mime, **_NO_CACHE}
+
+
 @app.route("/")
 def index():
     if "index.html" in _frontend_cache:
         content, mime = _frontend_cache["index.html"]
-        return content, 200, {"Content-Type": mime}
+        return _with_no_cache(content, mime)
     return app.send_static_file("index.html")
 
 
@@ -80,7 +92,7 @@ def index():
 def serve_js():
     if "app.js" in _frontend_cache:
         content, mime = _frontend_cache["app.js"]
-        return content, 200, {"Content-Type": mime}
+        return _with_no_cache(content, mime)
     return app.send_static_file("app.js")
 
 
@@ -88,7 +100,7 @@ def serve_js():
 def serve_css():
     if "style.css" in _frontend_cache:
         content, mime = _frontend_cache["style.css"]
-        return content, 200, {"Content-Type": mime}
+        return _with_no_cache(content, mime)
     return app.send_static_file("style.css")
 
 

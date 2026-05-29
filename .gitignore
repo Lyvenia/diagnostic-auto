@@ -18,8 +18,12 @@ __pycache__/
 flotte.json
 config.json
 .heartbeat
+ui_prefs.json
 Ports
 RODIA_CLIENT
+
+# Profil Edge dev (créé par main.py en mode dev)
+edge-profile/
 
 # Logs
 *.log

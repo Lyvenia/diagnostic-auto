@@ -1,4 +1,5 @@
 import json
+import os
 import time as _t
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeout
 from analysis.vin_decoder import decode_vin, get_recalls_nhtsa, _get_client
@@ -21,51 +22,58 @@ def _get_models() -> tuple[str, str]:
         cfg.get("model_complet", "claude-opus-4-5"),
     )
 
-# ── Fallback offline : descriptions locales pour les codes DTC courants ────────
-_OFFLINE_DTC = {
-    "P0100": "Débitmètre d'air (MAF) — circuit défaillant",
-    "P0101": "Débitmètre d'air (MAF) — plage/performance",
-    "P0110": "Capteur température d'air admission — circuit",
-    "P0115": "Capteur température liquide refroidissement — circuit",
-    "P0120": "Capteur position papillon (TPS) A — circuit",
-    "P0128": "Thermostat défaillant — température trop basse",
-    "P0130": "Sonde lambda amont banc 1 — circuit",
-    "P0171": "Mélange appauvri banc 1 — correction maximale atteinte",
-    "P0172": "Mélange enrichi banc 1 — correction maximale atteinte",
-    "P0174": "Mélange appauvri banc 2",
-    "P0175": "Mélange enrichi banc 2",
-    "P0200": "Circuit injecteur — défaut général",
-    "P0300": "Ratés d'allumage aléatoires — plusieurs cylindres",
-    "P0301": "Ratés d'allumage — cylindre 1",
-    "P0302": "Ratés d'allumage — cylindre 2",
-    "P0303": "Ratés d'allumage — cylindre 3",
-    "P0304": "Ratés d'allumage — cylindre 4",
-    "P0340": "Capteur position arbre à cames — circuit",
-    "P0400": "Recyclage gaz d'échappement (EGR) — débit",
-    "P0401": "Débit EGR insuffisant",
-    "P0402": "Débit EGR excessif",
-    "P0420": "Efficacité catalyseur insuffisante — banc 1",
-    "P0430": "Efficacité catalyseur insuffisante — banc 2",
-    "P0440": "Système EVAP — défaut général",
-    "P0442": "Fuite EVAP — petite fuite détectée",
-    "P0455": "Fuite EVAP — fuite importante",
-    "P0500": "Capteur de vitesse véhicule — circuit",
-    "P0600": "Bus série — défaut de communication",
-    "P0700": "Système de contrôle boîte de vitesses — défaut",
-    "P1000": "Cycle de conduite OBD2 non complété",
-}
+
+# ── Base de codes DTC locale (analysis/dtc_codes.json) ─────────────────────────
+# Chargée une fois au démarrage. Schéma par code :
+#   { fr: str, family: str, severity: "info"|"warn"|"critical",
+#     vehicles: ["essence"|"diesel"|"hybride"|"electrique"...], mil: bool }
+#
+# Le JSON est bundlé par PyInstaller (cf. RODIA.spec datas) — chemin identique
+# en dev (à côté de ce .py) et en build (sous _internal/analysis/).
+
+_DTC_JSON_PATH = os.path.join(os.path.dirname(__file__), "dtc_codes.json")
+_DTC_DB: dict = {}
+_DTC_FAMILIES: dict = {}
+
+def _load_dtc_db() -> None:
+    """Charge la base DTC depuis le JSON. Silencieux si absent (fallback minimal)."""
+    global _DTC_DB, _DTC_FAMILIES
+    try:
+        with open(_DTC_JSON_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        _DTC_DB = data.get("codes", {})
+        _DTC_FAMILIES = (data.get("_meta") or {}).get("families", {})
+        _log(f"DTC DB chargée : {len(_DTC_DB)} codes, {len(_DTC_FAMILIES)} familles")
+    except Exception as e:
+        _DTC_DB = {}
+        _DTC_FAMILIES = {}
+        _log(f"DTC DB introuvable ({_DTC_JSON_PATH}) — fallback minimal. {e}")
+
+_load_dtc_db()
+
+
+def get_dtc_info(code: str) -> dict | None:
+    """Recherche enrichie d'un code DTC : renvoie {fr, family, severity, vehicles, mil}
+    ou None si le code n'est pas dans la base locale."""
+    if not code:
+        return None
+    return _DTC_DB.get(code.upper())
 
 
 def _offline_fallback(vin_info: dict, dtc_codes: list) -> dict:
     """Retourne une analyse minimale basée sur la base locale si l'IA est indisponible."""
+    URG_MAP = {"info": "NON URGENT", "warn": "SURVEILLER", "critical": "URGENT"}
     analyses = []
     for code in dtc_codes:
-        desc = _OFFLINE_DTC.get(code, f"Code {code} — description non disponible hors ligne")
+        info = get_dtc_info(code) or {}
+        desc = info.get("fr") or f"Code {code} — description non disponible hors ligne"
+        urgence = URG_MAP.get(info.get("severity"), "SURVEILLER")
         analyses.append({
             "code": code,
             "description": desc,
-            "systeme": "Inconnu",
-            "urgence": "SURVEILLER",
+            "systeme": _DTC_FAMILIES.get(info.get("family", ""), "Inconnu"),
+            "famille": info.get("family", "non_classe"),
+            "urgence": urgence,
             "causes_probables": ["Analyse IA indisponible — service en cours de configuration"],
             "action": "L'analyse IA sera disponible prochainement",
             "fourchette_prix": "N/A",

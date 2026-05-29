@@ -771,6 +771,78 @@ function applyManualVin() {
   toast(`Véhicule enregistré : ${label}`, 'success', 3000);
 }
 
+/** Caractères VIN valides (ISO 3779 — I, O, Q exclus). */
+const _VIN_VALID_RE = /^[A-HJ-NPR-Z0-9]+$/;
+
+/** True si la chaîne est un VIN bien formé (17 caractères, alphabet valide). */
+function isValidVinFormat(v) {
+  return typeof v === 'string' && v.length === 17 && _VIN_VALID_RE.test(v);
+}
+
+/** Nettoie une saisie utilisateur en gardant uniquement les caractères VIN. */
+function cleanVinInput(s) {
+  return (s || '').toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
+}
+
+/** Ouvre la modale de saisie manuelle du VIN. Résout avec le VIN propre (17
+ *  chars) ou null si l'utilisateur a annulé. Utilisée en filet de sécurité
+ *  quand la lecture OBD a échoué ou rend un VIN invalide. */
+function askManualVin() {
+  return new Promise((resolve) => {
+    const modal  = document.getElementById('modalManualVin');
+    const input  = document.getElementById('manualVinInput');
+    const btnOk  = document.getElementById('btnManualVinOk');
+    const btnCa  = document.getElementById('btnManualVinCancel');
+    const hint   = document.getElementById('manualVinHint');
+    if (!modal || !input || !btnOk || !btnCa) { resolve(null); return; }
+
+    input.value = '';
+    hint.textContent = '0 / 17 caractères';
+    hint.style.color = 'var(--text-muted)';
+    btnOk.disabled = true;
+    modal.classList.remove('hidden');
+    setTimeout(() => input.focus(), 50);
+
+    function updateHint() {
+      const v = cleanVinInput(input.value);
+      // Resynchronise le champ avec la version nettoyée (au cas où l'utilisateur
+      // ait collé du texte avec espaces / tirets)
+      if (input.value !== v) input.value = v;
+      const ok = isValidVinFormat(v);
+      btnOk.disabled = !ok;
+      if (ok) {
+        hint.textContent = '✓ Format valide';
+        hint.style.color = 'var(--success, #2f7a3d)';
+      } else {
+        hint.textContent = `${v.length} / 17 caractères`;
+        hint.style.color = 'var(--text-muted)';
+      }
+    }
+    function close(result) {
+      modal.classList.add('hidden');
+      btnOk.removeEventListener('click', onOk);
+      btnCa.removeEventListener('click', onCancel);
+      input.removeEventListener('keydown', onKey);
+      input.removeEventListener('input', updateHint);
+      resolve(result);
+    }
+    function onOk() {
+      const v = cleanVinInput(input.value);
+      if (isValidVinFormat(v)) close(v);
+    }
+    function onCancel() { close(null); }
+    function onKey(e) {
+      if (e.key === 'Enter' && !btnOk.disabled) onOk();
+      else if (e.key === 'Escape') onCancel();
+    }
+
+    btnOk.addEventListener('click', onOk);
+    btnCa.addEventListener('click', onCancel);
+    input.addEventListener('keydown', onKey);
+    input.addEventListener('input', updateHint);
+  });
+}
+
 async function startDiagnostic(opts) {
   // Type de diagnostic : "panne" (défaut) ou "controle" (bilan santé)
   // Lu soit depuis opts.type, soit depuis l'attribut data-diag-type du bouton
@@ -806,11 +878,32 @@ async function startDiagnostic(opts) {
     const body = state.selectedVin ? { forced_vin: state.selectedVin } : {};
     const data = await api('POST', '/api/read', body);
 
-    state.currentDiag.vin         = data.vin;
-    state.currentDiag.dtc_codes   = data.dtc_codes   || [];
-    state.currentDiag.realtime    = data.realtime    || {};
-    state.currentDiag.freeze_frame= data.freeze_frame|| {};
-    state.currentDiag.analyse_ia  = null;
+    // Couche 2 : lecture OBD du VIN incertaine → saisie manuelle.
+    // Backend ne renvoie maintenant un VIN que s'il est strictement valide
+    // (17 caractères + alphabet ISO 3779) ou null sinon → on demande.
+    if (!isValidVinFormat(data.vin)) {
+      document.getElementById('readingMsg').textContent = 'VIN non lu — saisie manuelle requise…';
+      const manualVin = await askManualVin();
+      if (!manualVin) {
+        // L'utilisateur a annulé → on abandonne le diagnostic
+        showStep('stepWelcome');
+        return;
+      }
+      data.vin = manualVin;
+      state.currentDiag.vin_manually_entered = true;
+    } else {
+      state.currentDiag.vin_manually_entered = false;
+    }
+
+    state.currentDiag.vin           = data.vin;
+    state.currentDiag.dtc_codes     = data.dtc_codes     || [];
+    state.currentDiag.dtc_info      = data.dtc_info      || {};
+    state.currentDiag.dtc_families  = data.dtc_families  || {};
+    state.currentDiag.mil_on        = !!data.mil_on;
+    state.currentDiag.dtc_count_mil = data.dtc_count;
+    state.currentDiag.realtime      = data.realtime      || {};
+    state.currentDiag.freeze_frame  = data.freeze_frame  || {};
+    state.currentDiag.analyse_ia    = null;
     state.diagSaved = false;
 
     document.getElementById('saveFeedback').classList.add('hidden');
@@ -881,20 +974,102 @@ async function startDiagnostic(opts) {
   }
 }
 
+// Émojis et libellés par famille — utilisés pour le regroupement DTC
+const _DTC_FAMILY_ICON = {
+  moteur_carburant_air:            '🔧', moteur_allumage_rates:           '⚡',
+  moteur_injection_hp:             '💉', moteur_distribution:             '⚙️',
+  moteur_lubrification_temperature:'🌡️', antipollution_egr:               '♻️',
+  antipollution_fap_dpf:           '🌫️', antipollution_scr_adblue:        '💧',
+  antipollution_nox:               '☁️', antipollution_evap:              '⛽',
+  antipollution_catalyseur:        '🏭', antipollution_lambda:            '🔬',
+  antipollution_air_secondaire:    '💨', turbo_suralimentation:           '🌀',
+  prechauffage_diesel:             '🔥', transmission_boite:              '🔁',
+  transmission_embrayage:          '🔗', freinage_abs:                    '🛑',
+  esp_stabilite_traction:          '🛞', direction_assistee:              '🎯',
+  climatisation_chauffage:         '❄️', carrosserie_eclairage_confort:   '💡',
+  electronique_ecm_pcm:            '🧠', electronique_reseau_can:         '📡',
+  electronique_alimentation:       '🔋', securite_airbags:                '🛡️',
+  hybride_batterie_hv:             '🔋', hybride_moteur_electrique:       '⚡',
+  hybride_recuperation_freinage:   '♻️', electrique_bms:                  '🧮',
+  electrique_charge:               '🔌', electrique_inverter:             '⚡',
+  non_classe:                      '❓',
+};
+
 function renderDiagnosticData(isSimulation) {
-  const { vin, dtc_codes, realtime, freeze_frame } = state.currentDiag;
+  const { vin, dtc_codes, dtc_info, dtc_families, mil_on, realtime, freeze_frame } = state.currentDiag;
 
   document.getElementById('vinDisplay').textContent = vin || 'VIN non lu';
   document.getElementById('vehicleLabel').textContent = 'Lecture en cours…';
   document.getElementById('simTag').classList.toggle('hidden', !isSimulation);
 
-  // DTC badges
   const dtcEl = document.getElementById('dtcList');
-  if (dtc_codes.length === 0) {
+
+  if (!dtc_codes || dtc_codes.length === 0) {
     dtcEl.innerHTML = '<span class="dtc-no-code">✅ Aucun code de défaut détecté</span>';
   } else {
-    dtcEl.innerHTML = dtc_codes.map(c => `<span class="dtc-badge">${c}</span>`).join('');
+    // ── Bandeau MIL (voyant antipollution allumé) ──
+    let html = '';
+    if (mil_on) {
+      const milCount = dtc_codes.filter(c => dtc_info?.[c]?.mil).length || dtc_codes.length;
+      html += `<div class="mil-banner">
+        <span class="mil-banner-icon">🚨</span>
+        <div class="mil-banner-text">
+          <div class="mil-banner-title">Voyant antipollution allumé</div>
+          <div class="mil-banner-sub">${milCount} code${milCount>1?'s':''} affectant les émissions</div>
+        </div>
+      </div>`;
+    }
+
+    // ── Regroupement par famille ──
+    const byFamily = {};
+    for (const code of dtc_codes) {
+      const info = dtc_info?.[code] || {};
+      const fam  = info.family || 'non_classe';
+      (byFamily[fam] = byFamily[fam] || []).push({ code, info });
+    }
+    // Ordre : critiques d'abord (par nombre de critiques), puis warn, puis info
+    const severityRank = { critical: 0, warn: 1, info: 2 };
+    const familyKeys = Object.keys(byFamily).sort((a, b) => {
+      const sa = Math.min(...byFamily[a].map(x => severityRank[x.info.severity] ?? 1));
+      const sb = Math.min(...byFamily[b].map(x => severityRank[x.info.severity] ?? 1));
+      if (sa !== sb) return sa - sb;
+      return byFamily[b].length - byFamily[a].length;
+    });
+
+    for (const fam of familyKeys) {
+      const items   = byFamily[fam];
+      const famLbl  = (dtc_families && dtc_families[fam]) || (fam === 'non_classe' ? 'Non classé' : fam);
+      const icon    = _DTC_FAMILY_ICON[fam] || '🔧';
+      const critN   = items.filter(x => x.info.severity === 'critical').length;
+      const warnN   = items.filter(x => x.info.severity === 'warn').length;
+      const infoN   = items.filter(x => x.info.severity === 'info').length;
+      const counts  = [
+        critN ? `<span class="dtc-fam-pill dtc-fam-crit">${critN} critique${critN>1?'s':''}</span>` : '',
+        warnN ? `<span class="dtc-fam-pill dtc-fam-warn">${warnN} à surveiller</span>` : '',
+        infoN ? `<span class="dtc-fam-pill dtc-fam-info">${infoN} info</span>` : '',
+      ].filter(Boolean).join(' ');
+
+      html += `<div class="dtc-family">
+        <div class="dtc-family-header">
+          <span class="dtc-family-icon">${icon}</span>
+          <span class="dtc-family-title">${escHtml(famLbl)}</span>
+          <span class="dtc-family-counts">${counts}</span>
+        </div>
+        <div class="dtc-family-codes">`;
+      for (const { code, info } of items) {
+        const sev = info.severity || 'warn';
+        const sevCls = `dtc-${sev}`;
+        const fr  = info.fr || 'Description non disponible hors ligne';
+        html += `<div class="dtc-row ${sevCls}">
+          <span class="dtc-code">${escHtml(code)}</span>
+          <span class="dtc-desc">${escHtml(fr)}</span>
+        </div>`;
+      }
+      html += `</div></div>`;
+    }
+    dtcEl.innerHTML = html;
   }
+
   const clearBtn = document.getElementById('btnClearDTC');
   if (clearBtn) clearBtn.style.display = (dtc_codes && dtc_codes.length > 0) ? '' : 'none';
 
@@ -2576,7 +2751,7 @@ async function runConnectionTest() {
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   // Le toggle thème est géré visuellement via CSS ([data-theme="light"])
-  localStorage.setItem('diagTheme', theme);
+  savePref('diagTheme', theme);
 }
 
 function toggleTheme() {
@@ -6190,6 +6365,40 @@ function _updateOneProgress(accordionId, curId, totId, fillId) {
    USER MENU & HELP MENU & MODALES SUPPORT
 ══════════════════════════════════════════════════════ */
 
+/* ── Préférences UI persistées côté serveur (~/.RODIA/ui_prefs.json) ─────────
+ * Le localStorage Edge n'est PAS fiable entre sessions sous --user-data-dir
+ * (lock/profil temporaire selon contexte). On utilise /api/prefs comme
+ * source de vérité ; localStorage sert juste de cache synchrone en session. */
+
+async function loadPrefs() {
+  try {
+    const r = await fetch('/api/prefs');
+    if (!r.ok) return;
+    const prefs = await r.json();
+    for (const [k, v] of Object.entries(prefs || {})) {
+      if (v == null) { try { localStorage.removeItem(k); } catch {} ; continue; }
+      try {
+        localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+      } catch {}
+    }
+  } catch {}
+}
+
+function savePref(key, value) {
+  // 1) Cache local synchrone pour cohérence dans la session courante
+  try {
+    if (value == null) localStorage.removeItem(key);
+    else localStorage.setItem(key,
+      typeof value === 'string' ? value : JSON.stringify(value));
+  } catch {}
+  // 2) Persistance serveur (async, best-effort, fire-and-forget)
+  fetch('/api/prefs', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [key]: value }),
+  }).catch(() => {});
+}
+
 const USER_NAME_KEY = 'rodiaUserName';
 
 function getUserName() {
@@ -6197,8 +6406,7 @@ function getUserName() {
 }
 function setUserName(name) {
   const v = (name || '').trim();
-  if (v) localStorage.setItem(USER_NAME_KEY, v);
-  else   localStorage.removeItem(USER_NAME_KEY);
+  savePref(USER_NAME_KEY, v || null);
   refreshUserDisplay();
   // Re-render le hero du dashboard si chargé
   if (_dashData) renderDashboardHero(_dashData);
@@ -6328,8 +6536,8 @@ function setupUserMenu() {
   if (resetBtn) resetBtn.addEventListener('click', () => {
     closeAllDropdowns();
     if (!confirm('Réinitialiser votre profil ? Le nom et les préférences UI seront effacés. La flotte est conservée.')) return;
-    localStorage.removeItem(USER_NAME_KEY);
-    localStorage.removeItem('diagTheme');
+    savePref(USER_NAME_KEY, null);
+    savePref('diagTheme', null);
     refreshUserDisplay();
     if (_dashData) renderDashboardHero(_dashData);
     if (typeof toast === 'function') toast('Profil réinitialisé', 'success');
@@ -6348,6 +6556,84 @@ function setupUserMenu() {
     if (e.key === 'Enter') { saveBtn && saveBtn.click(); }
     if (e.key === 'Escape') { closeModal('modalEditName'); }
   });
+}
+
+/* ── Plein écran : bouton topbar + mémoire de préférence ──────── */
+
+const FULLSCREEN_KEY  = 'rodiaFullscreen';      // '1' = maximisé, '0' = fenêtré
+const WINDOW_SIZE_KEY = 'rodiaWindowSize';      // {w, h} de la dernière taille fenêtrée
+
+/** True si la fenêtre couvre déjà la zone de travail (max, sans la barre Windows). */
+function _isMaximized() {
+  return window.innerWidth  >= screen.availWidth  - 8
+      && window.innerHeight >= screen.availHeight - 8;
+}
+
+function _updateFullscreenIcon() {
+  const btn = document.getElementById('btnFullscreen');
+  if (!btn) return;
+  const maxed = _isMaximized();
+  const enter = btn.querySelector('.fs-icon-enter');
+  const exit  = btn.querySelector('.fs-icon-exit');
+  if (enter) enter.classList.toggle('hidden', maxed);
+  if (exit)  exit.classList.toggle('hidden', !maxed);
+  btn.title = maxed ? 'Réduire la fenêtre' : 'Plein écran (max — barre Windows visible)';
+}
+
+/** Bascule entre fenêtré et "max sans barre Windows". On utilise window.resizeTo
+ *  + screen.availWidth/availHeight (qui EXCLUENT la barre des tâches) au lieu
+ *  de la Fullscreen API (qui cache tout). */
+function toggleFullscreen() {
+  if (_isMaximized()) {
+    // Restaure la taille précédente sauvegardée (défaut 1280×800)
+    let prev = { w: 1280, h: 800 };
+    try { prev = JSON.parse(localStorage.getItem(WINDOW_SIZE_KEY) || '{}'); } catch {}
+    if (!prev.w || !prev.h) prev = { w: 1280, h: 800 };
+    window.resizeTo(prev.w, prev.h);
+    window.moveTo(Math.max(0, (screen.availWidth - prev.w) / 2),
+                  Math.max(0, (screen.availHeight - prev.h) / 2));
+    savePref(FULLSCREEN_KEY, '0');
+  } else {
+    // Sauvegarde la taille actuelle pour pouvoir la restaurer
+    savePref(WINDOW_SIZE_KEY,
+      JSON.stringify({ w: window.innerWidth, h: window.innerHeight }));
+    window.moveTo(0, 0);
+    window.resizeTo(screen.availWidth, screen.availHeight);
+    savePref(FULLSCREEN_KEY, '1');
+  }
+  setTimeout(_updateFullscreenIcon, 100);
+}
+
+function setupFullscreen() {
+  const btn = document.getElementById('btnFullscreen');
+  if (!btn) return;
+  btn.addEventListener('click', toggleFullscreen);
+  window.addEventListener('resize', _updateFullscreenIcon);
+
+  // Comportement par défaut : maximisé (--start-maximized ne prend pas toujours).
+  // L'utilisateur peut basculer en fenêtré via le bouton → on stocke '0'.
+  const pref = localStorage.getItem(FULLSCREEN_KEY);
+  setTimeout(() => {
+    if (pref === '0') {
+      // Préférence explicite fenêtré → on restaure la taille sauvegardée
+      let prev = { w: 1280, h: 800 };
+      try { prev = JSON.parse(localStorage.getItem(WINDOW_SIZE_KEY) || '{}'); } catch {}
+      if (!prev.w || !prev.h) prev = { w: 1280, h: 800 };
+      if (_isMaximized()) {
+        window.resizeTo(prev.w, prev.h);
+        window.moveTo(Math.max(0, (screen.availWidth - prev.w) / 2),
+                      Math.max(0, (screen.availHeight - prev.h) / 2));
+      }
+    } else {
+      // Défaut OU pref=='1' → maximiser (au cas où --start-maximized a échoué)
+      if (!_isMaximized()) {
+        window.moveTo(0, 0);
+        window.resizeTo(screen.availWidth, screen.availHeight);
+      }
+    }
+    _updateFullscreenIcon();
+  }, 150);
+  _updateFullscreenIcon();
 }
 
 /* ── Setup help menu ──────────────────────────────────────────── */
@@ -6694,7 +6980,7 @@ function endGuidedTour() {
       sp.style.cssText = '';
     }
   }, 220);
-  localStorage.setItem('rodiaTourSeen', '1');
+  savePref('rodiaTourSeen', '1');
 }
 
 /* ── Zone danger : effacer toutes les données ─────────────────── */
@@ -6725,11 +7011,16 @@ function setupDangerZone() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
+  // Préférences serveur d'abord — seed localStorage avant tout le reste
+  // (applyTheme, refreshUserDisplay, setupFullscreen lisent localStorage)
+  await loadPrefs();
+
   setupEvents();
   setupSearch();
   setupAuthEvents();
   setupUserMenu();
   setupHelpMenu();
+  setupFullscreen();
   setupSearchPalette();
   setupAnamneseFlow();
   closeBugReportSetup();

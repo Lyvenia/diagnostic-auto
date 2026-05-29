@@ -199,15 +199,30 @@ def _run_flask(port: int):
 
 # ── Ouvrir en mode app (fenêtre native sans onglets) ─────────────────────────
 
+def _get_work_area():
+    """Retourne (width, height) de la zone de travail Windows (écran moins la
+    barre des tâches). Utilisé pour ouvrir Edge déjà 'maximisé fenêtré'."""
+    try:
+        import ctypes
+        class RECT(ctypes.Structure):
+            _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                        ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+        SPI_GETWORKAREA = 0x0030
+        rect = RECT()
+        ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0)
+        return (rect.right - rect.left, rect.bottom - rect.top)
+    except Exception:
+        return (1280, 800)
+
+
 def _open_app_window(url: str):
     """Ouvre Edge ou Chrome en mode --app. Retourne le processus ou None.
 
-    Le dossier profil temporaire porte le préfixe "DiagnosticAuto_" —
-    ce préfixe est utilisé par update_routes pour cibler et fermer
-    les msedge.exe de cette session lors d'une mise à jour.
+    Profil Edge **stable** sous %APPDATA%\\RODIA\\edge-profile : permet la
+    persistance de localStorage entre les sessions (nom d'utilisateur, thème
+    jour/nuit, tour guidé déjà vu, plein écran mémorisé…). Avant 1.1.10 on
+    créait un mkdtemp à chaque lancement — toutes les préfs étaient perdues.
     """
-    import tempfile
-
     ev = os.path.expandvars
     edge_paths = [
         ev(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
@@ -220,9 +235,12 @@ def _open_app_window(url: str):
         ev(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
     ]
 
-    # Dossier profil temporaire pour forcer une instance dédiée et traçable
-    user_data_dir = tempfile.mkdtemp(prefix="DiagnosticAuto_")
+    # Dossier profil stable — survit aux relances → localStorage persistant
+    user_data_dir = os.path.join(DATA_DIR, "edge-profile")
+    os.makedirs(user_data_dir, exist_ok=True)
 
+    work_w, work_h = _get_work_area()
+    _log(f"Zone de travail détectée : {work_w}x{work_h}")
     for path in edge_paths + chrome_paths:
         if os.path.exists(path):
             _log(f"Ouverture app mode: {path}")
@@ -230,10 +248,17 @@ def _open_app_window(url: str):
                 path,
                 f"--app={url}",
                 f"--user-data-dir={user_data_dir}",
-                "--window-size=1280,800",
+                # Taille = zone de travail complète (barre Windows visible) + position 0,0
+                # → fenêtre "maximisée fenêtrée" d'office, plus fiable que --start-maximized
+                f"--window-size={work_w},{work_h}",
+                "--window-position=0,0",
                 "--disable-extensions",
                 "--no-first-run",
                 "--no-default-browser-check",
+                # Supprime la pop-up « Nous synchronisons vos données » d'Edge à chaque lancement
+                "--disable-sync",
+                "--disable-features=ChromeWhatsNewUI,EdgeSyncAccountSignin,msImplicitSignin,SigninInterceptBubble,MsaPromo,WelcomePage",
+                "--disable-default-apps",
             ])
             return proc
 

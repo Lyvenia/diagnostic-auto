@@ -143,26 +143,51 @@ def _read_dtc_mode07(connection, obd_lib) -> set:
     return codes
 
 
+def _read_mil_status(connection, obd_lib):
+    """Lit l'état du voyant antipollution (MIL) via Mode 01 PID 01.
+    Renvoie (mil_on, dtc_count) ou (None, None) si la lecture échoue."""
+    try:
+        r = connection.query(obd_lib.commands.STATUS)
+        if r.is_null() or r.value is None:
+            return None, None
+        v = r.value
+        mil = bool(getattr(v, "MIL", False))
+        cnt = int(getattr(v, "DTC_count", 0) or 0)
+        return mil, cnt
+    except Exception:
+        return None, None
+
+
 def read_dtc(self) -> dict:
-    """Lit les codes DTC sur tous les ECUs accessibles.
+    """Lit les codes DTC sur tous les ECUs accessibles + état du voyant MIL.
 
     Pipeline :
     1. Bus flush (vide le bus ELM327)
     2. Mode 03 broadcast 7DF (ECU standard OBD2)
     3. Scan multi-ECU 7E0-7E3 (ABS, airbag, boîte — non-OBD2 natif)
     4. Mode 07 (DTC en attente, 1 cycle de détection)
+    5. Mode 01 PID 01 — état MIL + compteur DTC stockés
 
     Retourne :
       {
-        "codes":  ["P0300", "C0040", ...],  # liste normalisée, triée
-        "status": "ok"                       # "ok" | "no_response" | "error"
+        "codes":     ["P0300", "C0040", ...],
+        "status":    "ok" | "no_response" | "error",
+        "mil_on":    bool | None,  # voyant antipollution allumé ?
+        "dtc_count": int  | None,  # nombre de codes stockés selon PID 01
       }
     """
     if self.simulation_mode:
-        return {"codes": list(self._simulate_dtc()), "status": "ok"}
+        codes = list(self._simulate_dtc())
+        # En simulation, le voyant est allumé s'il y a au moins un code DTC
+        return {
+            "codes": codes,
+            "status": "ok",
+            "mil_on": len(codes) > 0,
+            "dtc_count": len(codes),
+        }
 
     if not self.connection:
-        return {"codes": [], "status": "error"}
+        return {"codes": [], "status": "error", "mil_on": None, "dtc_count": None}
 
     # Stopper le thread cache pour libérer le bus ELM327
     was_running = self._cache_thread_running
@@ -173,10 +198,11 @@ def read_dtc(self) -> dict:
     try:
         import obd as obd_lib
     except ImportError:
-        return {"codes": [], "status": "error"}
+        return {"codes": [], "status": "error", "mil_on": None, "dtc_count": None}
 
     all_codes: set = set()
     final_status = "no_response"
+    mil_on, dtc_count = None, None
 
     try:
         # 1. Bus flush
@@ -200,11 +226,19 @@ def read_dtc(self) -> dict:
         if pending and final_status == "no_response":
             final_status = "ok"
 
+        # 5. Mode 01 PID 01 — état du voyant MIL + nombre de codes stockés
+        mil_on, dtc_count = _read_mil_status(self.connection, obd_lib)
+
     finally:
         if was_running and self.connection:
             self._start_cache_thread()
 
-    return {"codes": sorted(all_codes), "status": final_status}
+    return {
+        "codes":     sorted(all_codes),
+        "status":    final_status,
+        "mil_on":    mil_on,
+        "dtc_count": dtc_count,
+    }
 
 
 def clear_dtc(self):

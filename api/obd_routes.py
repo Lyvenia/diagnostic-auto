@@ -44,6 +44,8 @@ def api_simulation_toggle():
 @bp.route("/api/read", methods=["POST"])
 def api_read():
     """Lit VIN, codes DTC et données temps réel."""
+    from analysis.dtc_analyzer import get_dtc_info, _DTC_FAMILIES  # base DTC locale (1100+ codes)
+
     data = request.get_json() or {}
     forced_vin = data.get("forced_vin")
     obd.reset_simulation(forced_vin=forced_vin)
@@ -52,7 +54,28 @@ def api_read():
     dtc_result    = obd.read_dtc()
     dtc_codes     = dtc_result.get("codes", [])
     dtc_status    = dtc_result.get("status", "ok")
-    _log(f"[read] DTC status={dtc_status!r} codes={dtc_codes}")
+    mil_on        = dtc_result.get("mil_on")
+    dtc_count     = dtc_result.get("dtc_count")
+
+    # Enrichissement par code depuis la base locale (libellé FR + family +
+    # severity + mil + vehicles). Permet l'affichage groupé par famille et la
+    # couleur de gravité côté frontend sans appel supplémentaire.
+    dtc_info = {}
+    families_used = set()
+    for code in dtc_codes:
+        info = get_dtc_info(code)
+        if info:
+            dtc_info[code] = info
+            families_used.add(info.get("family", "non_classe"))
+    # Libellés humains des familles présentes dans ce diagnostic
+    dtc_families = {f: _DTC_FAMILIES.get(f, f) for f in families_used}
+
+    # Si PID 01 indispo (mil_on=None) mais qu'au moins un code stocké est
+    # MIL=true dans la base, on en déduit que le voyant est allumé.
+    if mil_on is None and dtc_codes:
+        mil_on = any(dtc_info.get(c, {}).get("mil") for c in dtc_codes)
+
+    _log(f"[read] DTC status={dtc_status!r} codes={dtc_codes} mil={mil_on}")
     realtime      = obd.read_realtime()
     engine_running = realtime.get("engine_running")  # True/False/None
     freeze_frame  = obd.read_freeze_frame() if dtc_codes else {}
@@ -61,6 +84,10 @@ def api_read():
         "vin_available":  vin is not None and len(vin) >= 11,
         "dtc_codes":      dtc_codes,
         "dtc_status":     dtc_status,
+        "dtc_info":       dtc_info,
+        "dtc_families":   dtc_families,
+        "mil_on":         mil_on,
+        "dtc_count":      dtc_count,
         "engine_running": engine_running,
         "realtime":       realtime,
         "freeze_frame":   freeze_frame,

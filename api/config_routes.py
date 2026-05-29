@@ -3,12 +3,61 @@ from shared import obd, fleet
 from core.config import load_config, save_config
 from core.paths import data_path
 from datetime import datetime
+import json
 import time as _t
 import os
 
 bp = Blueprint('config', __name__)
 
 APP_VERSION = "1.0.0"
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Préférences UI persistées côté serveur (ui_prefs.json dans %APPDATA%\RODIA)
+#  Source de vérité pour : nom utilisateur, thème, taille fenêtre, plein écran,
+#  visite guidée vue. Le localStorage Edge n'est PAS fiable entre sessions
+#  (lock/temp profile selon configuration), donc on persiste côté serveur.
+# ──────────────────────────────────────────────────────────────────────────────
+_PREFS_FILE = data_path("ui_prefs.json")
+
+def _load_prefs() -> dict:
+    try:
+        with open(_PREFS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+def _save_prefs(data: dict) -> bool:
+    try:
+        os.makedirs(os.path.dirname(_PREFS_FILE), exist_ok=True)
+        with open(_PREFS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+@bp.route("/api/prefs", methods=["GET"])
+def api_prefs_get():
+    return jsonify(_load_prefs())
+
+
+@bp.route("/api/prefs", methods=["PUT"])
+def api_prefs_put():
+    """Merge des préférences entrantes avec celles déjà stockées.
+    Body : { "key1": "value1", "key2": null (= delete), ... }"""
+    incoming = request.get_json(silent=True) or {}
+    if not isinstance(incoming, dict):
+        return jsonify({"error": "body must be an object"}), 400
+    current = _load_prefs()
+    for k, v in incoming.items():
+        if v is None:
+            current.pop(k, None)
+        else:
+            current[k] = v
+    if not _save_prefs(current):
+        return jsonify({"error": "save failed"}), 500
+    return jsonify({"ok": True, "prefs": current})
 
 
 @bp.route("/health")

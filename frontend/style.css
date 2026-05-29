@@ -1159,7 +1159,15 @@ a  { color: var(--accent); text-decoration: none; }
 /* Panneau d'accueil — centrage via margin auto */
 #stepWelcome {
   padding: 24px;
+  /* Sur grands écrans, on centre verticalement le contenu plutôt que de
+     laisser un grand vide en bas. */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 140px);
 }
+#stepWelcome > * { margin-top: 0; margin-bottom: 0; }
 
 /* Welcome card — flat, sobre, accent terracotta */
 .welcome-card {
@@ -1447,7 +1455,7 @@ a  { color: var(--accent); text-decoration: none; }
 /* ══════════════════════════════════════════════════════
    DTC LIST
 ══════════════════════════════════════════════════════ */
-.dtc-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.dtc-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .dtc-badge {
   background: rgba(229,57,53,.12);
   border: 1px solid rgba(229,57,53,.5);
@@ -1464,6 +1472,103 @@ a  { color: var(--accent); text-decoration: none; }
   color: var(--success);
   font-size: 0.9rem;
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   MIL banner + regroupement DTC par famille (1.1.10+)
+   ════════════════════════════════════════════════════════════════════════════ */
+.mil-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(135deg, rgba(217,119,6,.16), rgba(217,119,6,.08));
+  border: 1px solid rgba(217,119,6,.45);
+  border-left: 4px solid #d97706;
+  border-radius: var(--radius-lg, 14px);
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 12px rgba(217,119,6,.08);
+}
+.mil-banner-icon { font-size: 1.6rem; line-height: 1; }
+.mil-banner-text { flex: 1; }
+.mil-banner-title {
+  font-weight: 700;
+  font-size: 0.98rem;
+  color: #b45309;
+  letter-spacing: .01em;
+}
+.mil-banner-sub {
+  font-size: 0.82rem;
+  color: #92400e;
+  margin-top: 2px;
+}
+[data-theme="dark"] .mil-banner-title { color: #fbbf24; }
+[data-theme="dark"] .mil-banner-sub   { color: #fcd34d; }
+
+.dtc-family {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.dtc-family-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-card2, rgba(0,0,0,.02));
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.dtc-family-icon { font-size: 1.05rem; }
+.dtc-family-title {
+  flex: 1;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.dtc-family-counts { display: flex; gap: 6px; flex-wrap: wrap; }
+.dtc-fam-pill {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.dtc-fam-crit { background: rgba(229,57,53,.14); color: #dc2626; border: 1px solid rgba(229,57,53,.35); }
+.dtc-fam-warn { background: rgba(217,119,6,.14); color: #b45309; border: 1px solid rgba(217,119,6,.35); }
+.dtc-fam-info { background: rgba(100,116,139,.14); color: #475569; border: 1px solid rgba(100,116,139,.35); }
+[data-theme="dark"] .dtc-fam-crit { color: #fca5a5; }
+[data-theme="dark"] .dtc-fam-warn { color: #fcd34d; }
+[data-theme="dark"] .dtc-fam-info { color: #cbd5e1; }
+
+.dtc-family-codes { display: flex; flex-direction: column; }
+.dtc-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+.dtc-row:first-child { border-top: none; }
+.dtc-code {
+  font-family: ui-monospace, 'Courier New', monospace;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-align: center;
+  padding: 5px 0;
+  border-radius: 5px;
+  font-size: 0.86rem;
+}
+.dtc-critical .dtc-code { background: rgba(229,57,53,.14); color: #dc2626; border: 1px solid rgba(229,57,53,.4); }
+.dtc-warn     .dtc-code { background: rgba(217,119,6,.14); color: #b45309; border: 1px solid rgba(217,119,6,.4); }
+.dtc-info     .dtc-code { background: rgba(100,116,139,.14); color: #475569; border: 1px solid rgba(100,116,139,.4); }
+[data-theme="dark"] .dtc-critical .dtc-code { color: #fca5a5; }
+[data-theme="dark"] .dtc-warn     .dtc-code { color: #fcd34d; }
+[data-theme="dark"] .dtc-info     .dtc-code { color: #cbd5e1; }
+.dtc-desc { color: var(--text-dim); line-height: 1.4; }
 .dtc-cleared {
   background: rgba(76,175,80,.12);
   border-color: rgba(76,175,80,.4);
