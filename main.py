@@ -215,6 +215,56 @@ def _get_work_area():
         return (1280, 800)
 
 
+def _maximize_rodia_window_async():
+    """Trouve la fenêtre RODIA Edge et force son état Windows "Maximized".
+
+    Lancé en thread après l'ouverture de Edge. `--start-maximized` est ignoré
+    par Edge en mode --app, donc on appelle ShowWindow(hwnd, SW_MAXIMIZE) via
+    l'API Win32 dès que la fenêtre apparaît. Effet : bouton Restore Down au
+    lieu de Maximize en haut à droite, comme une vraie app maximisée.
+    """
+    import ctypes
+    import threading
+    import time as _time
+
+    def _run():
+        try:
+            user32 = ctypes.windll.user32
+            SW_MAXIMIZE = 3
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+            def _enum_visible_rodia():
+                hwnds = []
+                def cb(hwnd, _lparam):
+                    if not user32.IsWindowVisible(hwnd):
+                        return True
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    if length <= 0:
+                        return True
+                    buf = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buf, length + 1)
+                    if "RODIA" in buf.value:
+                        hwnds.append(hwnd)
+                    return True
+                user32.EnumWindows(WNDENUMPROC(cb), 0)
+                return hwnds
+
+            # Attend jusqu'à 8 secondes que la fenêtre apparaisse
+            for _ in range(40):
+                _time.sleep(0.2)
+                hwnds = _enum_visible_rodia()
+                if hwnds:
+                    for h in hwnds:
+                        user32.ShowWindow(h, SW_MAXIMIZE)
+                    _log(f"Fenetre RODIA maximisee (hwnd={hwnds})")
+                    return
+            _log("Fenetre RODIA introuvable apres 8s — pas de maximisation")
+        except Exception as e:
+            _log(f"Maximisation echouee : {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _open_app_window(url: str):
     """Ouvre Edge ou Chrome en mode --app. Retourne le processus ou None.
 
@@ -260,6 +310,8 @@ def _open_app_window(url: str):
                 "--disable-features=ChromeWhatsNewUI,EdgeSyncAccountSignin,msImplicitSignin,SigninInterceptBubble,MsaPromo,WelcomePage",
                 "--disable-default-apps",
             ])
+            # Force la maximisation Windows (--start-maximized ignoré en --app)
+            _maximize_rodia_window_async()
             return proc
 
     _log("Edge/Chrome non trouvé — fallback navigateur système")
