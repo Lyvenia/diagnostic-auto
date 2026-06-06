@@ -43,27 +43,47 @@ def read_vin(self):
         self._cache_thread_running = False
         time.sleep(0.3)
 
-    # Tentatives multiples avec délais croissants : le VIN OBD est en multi-frame
-    # ISO-TP, lent à l'init, et certains ELM327 droppent des octets. On exige
-    # une lecture STRICTEMENT valide (17 caractères + alphabet ISO 3779). Si
-    # rien de valide après N tentatives, on rend None → le frontend bascule
-    # sur la saisie manuelle (couche 2 du filet de sécurité).
-    best_invalid = None  # garde le meilleur candidat invalide pour le log
+    # Couche 1 — Tentatives multiples avec délais croissants : ISO-TP lent à
+    # l'init, certains ELM327 droppent des octets. On exige une lecture
+    # STRICTEMENT valide (17 caractères + alphabet ISO 3779).
+    #
+    # Couche 3 — Consensus : on n'accepte un VIN que si on l'a lu DEUX FOIS
+    # à l'identique. Ça filtre les corruptions silencieuses (17 chars valides
+    # mais 1-2 caractères erronés à cause d'une trame partiellement corrompue).
+    # Si pas de consensus après N tentatives, on rend None.
+    seen_vins: list[str] = []  # historique des lectures valides
+    best_invalid = None
     try:
         import obd
-        delays = [0.3, 0.6, 1.0, 1.5]
+        delays = [0.3, 0.6, 1.0, 1.5, 2.0, 2.5]   # jusqu'à 6 tentatives pour consensus
         for attempt, delay in enumerate(delays):
             try:
                 response = self.connection.query(obd.commands.VIN)
                 if not response.is_null():
                     vin = clean_vin_value(response.value)
                     if is_valid_vin(vin):
-                        return vin
-                    if vin and (best_invalid is None or len(vin) > len(best_invalid)):
+                        seen_vins.append(vin)
+                        # Consensus : 2 lectures identiques d'affilée ou >50% concordance
+                        if seen_vins.count(vin) >= 2:
+                            self._log_vin_error(
+                                f"VIN consensus atteint apres {attempt+1} tentatives "
+                                f"({seen_vins.count(vin)}x identique) : {vin}"
+                            )
+                            return vin
+                        # Si on a déjà 3 lectures différentes, on prend la plus fréquente
+                        # à condition qu'elle représente >= 50% des lectures
+                        if len(seen_vins) >= 3:
+                            from collections import Counter
+                            most = Counter(seen_vins).most_common(1)[0]
+                            if most[1] / len(seen_vins) >= 0.5 and most[1] >= 2:
+                                self._log_vin_error(
+                                    f"VIN consensus majoritaire ({most[1]}/{len(seen_vins)}) : {most[0]}"
+                                )
+                                return most[0]
+                    elif vin and (best_invalid is None or len(vin) > len(best_invalid)):
                         best_invalid = vin
                         self._log_vin_error(
-                            f"VIN tentative {attempt+1} invalide "
-                            f"(longueur={len(vin)}) : {vin!r}"
+                            f"VIN tentative {attempt+1} invalide (long={len(vin)}) : {vin!r}"
                         )
             except Exception as e:
                 self._log_vin_error(f"VIN tentative {attempt+1} échouée : {e}")
@@ -72,10 +92,15 @@ def read_vin(self):
         if was_running and self.connection:
             self._start_cache_thread()
 
-    if best_invalid:
+    # Si on a au moins 1 VIN valide mais pas de consensus, on log et on rejette
+    if seen_vins:
         self._log_vin_error(
-            f"VIN abandonné après {len(delays)} tentatives — "
-            f"meilleur candidat invalide : {best_invalid!r}"
+            f"VIN sans consensus apres {len(seen_vins)} lectures valides : "
+            f"{seen_vins} → frontend va proposer saisie manuelle"
+        )
+    elif best_invalid:
+        self._log_vin_error(
+            f"VIN abandonne — meilleur candidat invalide : {best_invalid!r}"
         )
     return None
 

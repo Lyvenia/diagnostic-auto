@@ -26,7 +26,8 @@ def _log(msg):
 @bp.route("/api/decode-vin", methods=["POST"])
 def api_decode_vin():
     """Décode un VIN. Cascade :
-      1. Base VIN partagée Lyvenia (crowdsourcée) — la plus précise
+      1. Base VIN partagée Lyvenia (crowdsourcée, indexée par préfixe 11 chars)
+         → effet réseau : 1 Trafic 2020 contribué = TOUS les Trafic 2020 identifiés
       2. WMI local + NHTSA (fallback hors-ligne)
       3. IA Claude (fallback ultime)
     """
@@ -38,20 +39,20 @@ def api_decode_vin():
     if not vin or len(vin) < 11:
         return jsonify({"error": "VIN invalide"}), 400
 
-    # ── 1. Base communautaire Lyvenia (si VIN exactement 17 chars) ──
-    if len(vin) == 17:
+    # ── 1. Base communautaire Lyvenia (préfixe extrait côté serveur) ──
+    if len(vin) >= 11:
         try:
             headers = {}
             tok = _get_jwt()
             if tok:
                 headers["Authorization"] = f"Bearer {tok}"
+            # On envoie le VIN complet ; le serveur extrait le préfixe 11 et ignore le suffixe
             r = _req.get(f"https://api.lyvenia.fr/vin/{vin}", headers=headers, timeout=5)
             if r.status_code == 200:
                 shared = r.json()
-                if shared.get("found") or shared.get("vin"):
-                    # Format compatible avec decode_vin pour l'UI
+                if shared.get("found"):
                     return jsonify({
-                        "vin":          shared.get("vin", vin),
+                        "vin":          vin,
                         "marque":       shared.get("marque", "Inconnu"),
                         "modele":       shared.get("modele", "Inconnu"),
                         "annee":        str(shared.get("annee") or ""),
@@ -59,6 +60,7 @@ def api_decode_vin():
                         "source":       "community",
                         "shared_status":       shared.get("status"),
                         "shared_contributors": shared.get("contributions_count"),
+                        "match_type":          shared.get("match_type", "prefix"),
                     })
         except Exception:
             pass  # silencieux — on retombe sur le décodage local

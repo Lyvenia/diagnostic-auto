@@ -953,14 +953,21 @@ async function startDiagnostic(opts) {
             .filter(s => s && s !== 'Inconnu').join(' ');
           const vehicleLabelEl = document.getElementById('vehicleLabel');
           if (label) {
-            // Badge source communauté si identification crowdsourcée
+            // Badge de confiance selon la source
+            let badge = '';
             if (vi.source === 'community') {
               const n = vi.shared_contributors || 0;
-              const verif = vi.shared_status === 'verified' ? '✓ vérifié' : 'suggéré';
-              vehicleLabelEl.innerHTML = `${escHtml(label)} <span class="vin-comm-badge" title="Identifié par la communauté RODIA">👥 ${verif} · ${n}</span>`;
-            } else {
-              vehicleLabelEl.textContent = label;
+              if (vi.shared_status === 'verified') {
+                badge = `<span class="vin-conf-badge vin-conf-high" title="Vérifié par ${n} garages RODIA — confiance maximale">👥 ✓ vérifié · ${n}</span>`;
+              } else if (vi.shared_status === 'disputed') {
+                badge = `<span class="vin-conf-badge vin-conf-low" title="Conflit entre contributeurs — à vérifier">👥 ⚠ contesté · ${n}</span>`;
+              } else {
+                badge = `<span class="vin-conf-badge vin-conf-med" title="Suggéré par ${n} garage(s) RODIA">👥 suggéré · ${n}</span>`;
+              }
+            } else if (vi.source === 'local') {
+              badge = `<span class="vin-conf-badge vin-conf-low" title="Décodage local (table WMI) — à confirmer">🤖 local</span>`;
             }
+            vehicleLabelEl.innerHTML = `${escHtml(label)} ${badge}`;
           }
           // Pré-remplir les champs contexte si vides
           const fMarque = document.getElementById('ctxMarque');
@@ -1438,46 +1445,79 @@ function toggleCard(idx) {
 // ════════════════════════════════════════════════════════
 //  BASE VIN PARTAGÉE — contribution post-diagnostic
 // ════════════════════════════════════════════════════════
+/** Constructeurs Renault/PSA/Mercedes/etc. par WMI — pour la vérif de cohérence */
+const _WMI_BRANDS = {
+  'VF1': 'Renault', 'VF6': 'Renault', 'VF7': 'Citroën',
+  'VF3': 'Peugeot', 'VF8': 'Matra',
+  'WBA': 'BMW', 'WBS': 'BMW', 'WBY': 'BMW',
+  'WDB': 'Mercedes-Benz', 'WDC': 'Mercedes-Benz', 'WDD': 'Mercedes-Benz',
+  'WAU': 'Audi', 'WVW': 'Volkswagen', 'WV1': 'Volkswagen', 'WV2': 'Volkswagen',
+  'ZFA': 'Fiat', 'ZAR': 'Alfa Romeo', 'ZFF': 'Ferrari',
+  'JF1': 'Subaru', 'JTM': 'Toyota', 'JN1': 'Nissan',
+  'KMH': 'Hyundai', 'KNA': 'Kia',
+  'TMB': 'Škoda', 'VSS': 'SEAT',
+};
+
+/** Vérifie que la marque saisie est cohérente avec le WMI (3 premiers chars du VIN). */
+function checkVinWmiConsistency(vin, marque) {
+  if (!vin || vin.length < 3 || !marque) return { ok: true };
+  const wmi = vin.substring(0, 3).toUpperCase();
+  const expected = _WMI_BRANDS[wmi];
+  if (!expected) return { ok: true };  // WMI inconnu de notre table → on ne bloque pas
+  const m = (marque || '').toLowerCase();
+  const e = expected.toLowerCase();
+  if (m.includes(e.split('-')[0]) || e.includes(m.split(' ')[0])) return { ok: true };
+  return { ok: false, expected, given: marque, wmi };
+}
+
 /** Propose à l'utilisateur de contribuer à la base VIN partagée après une
  *  sauvegarde de diagnostic. Ne fait rien si :
- *   - VIN absent ou ≠ 17 caractères (manuel sans VIN, ou VIN partiel)
- *   - véhicule déjà identifié par la communauté (source === 'community')
+ *   - VIN absent ou < 11 caractères
+ *   - véhicule déjà confirmé par la communauté (source === 'community' && status === 'verified')
  *   - on n'a pas marque+modele valides à proposer */
 function maybeProposeVinContribution() {
   try {
     const vin = state.currentDiag.vin;
     const vd  = state.currentDiag.vehicle_decoded || {};
-    if (!vin || vin.length !== 17) return;
-    if (vd.source === 'community') return;
+    if (!vin || vin.length < 11) return;
+    if (vd.source === 'community' && vd.shared_status === 'verified') return;
     const marque = (vd.marque || '').trim();
     const modele = (vd.modele || '').trim();
     if (!marque || marque === 'Inconnu' || !modele || modele === 'Inconnu') return;
 
     const annee  = (vd.annee || '').toString().trim();
     const motori = (vd.motorisation || '').trim();
-    const label  = `${marque} ${modele}${annee ? ' ' + annee : ''}`;
 
-    const payload = {
-      vin, marque, modele,
-      annee: annee ? parseInt(annee, 10) : null,
-      motorisation: motori || null,
-    };
+    // Check cohérence WMI
+    const wmiCheck = checkVinWmiConsistency(vin, marque);
+    const wmiWarning = !wmiCheck.ok
+      ? `<div class="vin-contrib-warn">⚠️ Le VIN commence par <strong>${escHtml(wmiCheck.wmi)}</strong> (généralement <strong>${escHtml(wmiCheck.expected)}</strong>) mais vous indiquez <strong>${escHtml(wmiCheck.given)}</strong>. Vérifiez avant de contribuer.</div>`
+      : '';
 
-    // Toast persistant avec bouton de confirmation
+    // Toast persistant avec vérification visuelle (carte grise champ E)
     const id = 'vinContribToast_' + Date.now();
     const html = `
       <div class="vin-contrib-toast" id="${id}">
         <div class="vin-contrib-icon">👥</div>
         <div class="vin-contrib-body">
           <div class="vin-contrib-title">Aider la communauté RODIA ?</div>
-          <div class="vin-contrib-text">Confirmer ce véhicule (<strong>${escHtml(label)}</strong>) aidera les autres garagistes à l'identifier automatiquement.</div>
+          <div class="vin-contrib-text">
+            <div class="vin-contrib-vehicle">
+              <strong>${escHtml(marque)} ${escHtml(modele)}${annee ? ' ' + annee : ''}</strong>
+              ${motori ? `<br><span class="vin-contrib-moto">${escHtml(motori)}</span>` : ''}
+            </div>
+            <div class="vin-contrib-vincheck">
+              VIN détecté : <code>${escHtml(vin)}</code><br>
+              <span class="vin-contrib-hint">Vérifier sur la carte grise <strong>champ E</strong> avant de confirmer</span>
+            </div>
+            ${wmiWarning}
+          </div>
         </div>
         <div class="vin-contrib-actions">
           <button class="btn btn-sm btn-primary" id="${id}_yes">✓ Confirmer</button>
           <button class="btn btn-sm btn-outline" id="${id}_no">Non merci</button>
         </div>
       </div>`;
-    // Inject dans la zone toast container ou body
     const host = document.getElementById('toastHost') || document.body;
     const wrap = document.createElement('div');
     wrap.innerHTML = html;
@@ -1486,22 +1526,31 @@ function maybeProposeVinContribution() {
     const close = () => { document.getElementById(id)?.remove(); };
     document.getElementById(id + '_no').addEventListener('click', close);
     document.getElementById(id + '_yes').addEventListener('click', async () => {
+      // Confirmation supplémentaire si incohérence WMI
+      if (!wmiCheck.ok && !confirm(`Incohérence détectée :\nVIN commence par "${wmiCheck.wmi}" (${wmiCheck.expected}) mais vous indiquez "${wmiCheck.given}".\n\nConfirmer quand même la contribution ?`)) {
+        return;
+      }
       try {
-        const r = await api('POST', '/api/vin/contribute', payload);
+        const r = await api('POST', '/api/vin/contribute', {
+          vin, marque, modele,
+          annee: annee ? parseInt(annee, 10) : null,
+          motorisation: motori || null,
+        });
         close();
         if (r && r.ok) {
-          toast(`🙏 Merci ! ${r.contributions_count > 1 ? `Confirmation #${r.contributions_count}` : '1ère identification'} pour ce VIN.`, 'success');
+          const n = r.contributions_count || 1;
+          toast(`🙏 Merci ! ${n > 1 ? `Confirmation #${n} pour ce modèle` : '1ère identification de ce modèle'}.`, 'success');
         } else {
           toast('Contribution prise en compte', 'info');
         }
       } catch (e) {
         close();
-        toast('Impossible d\'enregistrer la contribution maintenant', 'warning');
+        toast(`Impossible d'enregistrer : ${e.message || 'erreur réseau'}`, 'warning');
       }
     });
 
-    // Auto-dismiss après 30s
-    setTimeout(close, 30000);
+    // Auto-dismiss après 45s (un peu plus pour donner le temps de vérifier)
+    setTimeout(close, 45000);
   } catch (_) {}
 }
 

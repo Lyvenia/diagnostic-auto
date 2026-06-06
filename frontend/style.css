@@ -1476,7 +1476,8 @@ a  { color: var(--accent); text-decoration: none; }
 /* ════════════════════════════════════════════════════════════════════════════
    Base VIN partagée — badge "communauté" + toast de contribution (1.2.0+)
    ════════════════════════════════════════════════════════════════════════════ */
-.vin-comm-badge {
+/* Badges de confiance VIN (vert/orange/rouge selon source + concordance) */
+.vin-conf-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1485,12 +1486,71 @@ a  { color: var(--accent); text-decoration: none; }
   padding: 2px 8px;
   margin-left: 8px;
   border-radius: 999px;
-  background: rgba(46, 124, 86, .14);
-  color: #15803d;
-  border: 1px solid rgba(46, 124, 86, .35);
+  border: 1px solid;
   vertical-align: middle;
 }
-[data-theme="dark"] .vin-comm-badge { color: #86efac; }
+.vin-conf-high {
+  background: rgba(46, 124, 86, .14);
+  color: #15803d;
+  border-color: rgba(46, 124, 86, .35);
+}
+.vin-conf-med {
+  background: rgba(202, 138, 4, .14);
+  color: #a16207;
+  border-color: rgba(202, 138, 4, .35);
+}
+.vin-conf-low {
+  background: rgba(220, 38, 38, .12);
+  color: #b91c1c;
+  border-color: rgba(220, 38, 38, .35);
+}
+[data-theme="dark"] .vin-conf-high { color: #86efac; }
+[data-theme="dark"] .vin-conf-med  { color: #fbbf24; }
+[data-theme="dark"] .vin-conf-low  { color: #fca5a5; }
+
+/* Encart de vérification dans le toast de contribution */
+.vin-contrib-vehicle {
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+  color: var(--text-main);
+}
+.vin-contrib-moto {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.vin-contrib-vincheck {
+  background: var(--bg-card2, rgba(0,0,0,.03));
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+.vin-contrib-vincheck code {
+  font-family: ui-monospace, 'Courier New', monospace;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: .04em;
+  background: transparent;
+}
+.vin-contrib-hint {
+  color: var(--accent);
+  font-style: italic;
+}
+.vin-contrib-warn {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(220, 38, 38, .08);
+  border: 1px solid rgba(220, 38, 38, .25);
+  color: #b91c1c;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+[data-theme="dark"] .vin-contrib-warn { color: #fca5a5; }
 
 .vin-contrib-toast {
   position: fixed;
