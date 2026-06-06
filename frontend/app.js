@@ -844,6 +844,8 @@ function askManualVin() {
 }
 
 async function startDiagnostic(opts) {
+  // Reset le flag du toast de contribution VIN pour le nouveau diagnostic
+  _vinContribOpen = false;
   // Type de diagnostic : "panne" (défaut) ou "controle" (bilan santé)
   // Lu soit depuis opts.type, soit depuis l'attribut data-diag-type du bouton
   let diagType = (opts && opts.type) || 'panne';
@@ -976,6 +978,11 @@ async function startDiagnostic(opts) {
           if (fMarque && !fMarque.value && vi.marque && vi.marque !== 'Inconnu') fMarque.value = vi.marque;
           if (fModele && !fModele.value && vi.modele && vi.modele !== 'Inconnu') fModele.value = vi.modele;
           if (fAnnee  && !fAnnee.value  && vi.annee  && vi.annee  !== 'Inconnu') fAnnee.value  = vi.annee;
+
+          // Proposer la contribution à la base partagée IMMÉDIATEMENT après
+          // l'identification — c'est le moment où l'utilisateur est concentré
+          // sur le véhicule. Plutôt que d'attendre la fin du diagnostic.
+          setTimeout(() => maybeProposeVinContribution(), 800);
         })
         .catch(() => {}); // silencieux si erreur
     }
@@ -1470,71 +1477,117 @@ function checkVinWmiConsistency(vin, marque) {
   return { ok: false, expected, given: marque, wmi };
 }
 
-/** Propose à l'utilisateur de contribuer à la base VIN partagée après une
- *  sauvegarde de diagnostic. Ne fait rien si :
+/** Propose à l'utilisateur de contribuer à la base VIN partagée, dès la
+ *  détection du véhicule. Toast avec champs ÉDITABLES — l'utilisateur peut
+ *  corriger/compléter avant de contribuer (utile si décodage local imprécis
+ *  ou modèle "Inconnu").
+ *
+ *  N'apparaît pas si :
  *   - VIN absent ou < 11 caractères
- *   - véhicule déjà confirmé par la communauté (source === 'community' && status === 'verified')
- *   - on n'a pas marque+modele valides à proposer */
+ *   - véhicule déjà confirmé par la communauté (verified)
+ *   - toast déjà ouvert pour ce diag (anti-doublon) */
+let _vinContribOpen = false;
+
 function maybeProposeVinContribution() {
   try {
+    if (_vinContribOpen) return;  // déjà affiché
     const vin = state.currentDiag.vin;
     const vd  = state.currentDiag.vehicle_decoded || {};
     if (!vin || vin.length < 11) return;
     if (vd.source === 'community' && vd.shared_status === 'verified') return;
-    const marque = (vd.marque || '').trim();
-    const modele = (vd.modele || '').trim();
-    if (!marque || marque === 'Inconnu' || !modele || modele === 'Inconnu') return;
 
-    const annee  = (vd.annee || '').toString().trim();
-    const motori = (vd.motorisation || '').trim();
+    const marque = (vd.marque && vd.marque !== 'Inconnu') ? vd.marque : '';
+    const modele = (vd.modele && vd.modele !== 'Inconnu') ? vd.modele : '';
+    const annee  = (vd.annee  && vd.annee  !== 'Inconnu') ? (vd.annee + '') : '';
+    const motori = (vd.motorisation || '');
 
-    // Check cohérence WMI
-    const wmiCheck = checkVinWmiConsistency(vin, marque);
-    const wmiWarning = !wmiCheck.ok
-      ? `<div class="vin-contrib-warn">⚠️ Le VIN commence par <strong>${escHtml(wmiCheck.wmi)}</strong> (généralement <strong>${escHtml(wmiCheck.expected)}</strong>) mais vous indiquez <strong>${escHtml(wmiCheck.given)}</strong>. Vérifiez avant de contribuer.</div>`
-      : '';
+    // Détecte la marque attendue depuis le WMI pour pré-remplir si vide
+    const wmiBrand = _WMI_BRANDS[vin.substring(0, 3).toUpperCase()] || '';
+    const suggestedMarque = marque || wmiBrand;
 
-    // Toast persistant avec vérification visuelle (carte grise champ E)
     const id = 'vinContribToast_' + Date.now();
     const html = `
-      <div class="vin-contrib-toast" id="${id}">
-        <div class="vin-contrib-icon">👥</div>
+      <div class="vin-contrib-toast vin-contrib-editable" id="${id}">
+        <div class="vin-contrib-header">
+          <span class="vin-contrib-icon">👥</span>
+          <div class="vin-contrib-title">Identifier ce véhicule pour la communauté</div>
+          <button class="vin-contrib-close" id="${id}_close" title="Fermer">✕</button>
+        </div>
         <div class="vin-contrib-body">
-          <div class="vin-contrib-title">Aider la communauté RODIA ?</div>
-          <div class="vin-contrib-text">
-            <div class="vin-contrib-vehicle">
-              <strong>${escHtml(marque)} ${escHtml(modele)}${annee ? ' ' + annee : ''}</strong>
-              ${motori ? `<br><span class="vin-contrib-moto">${escHtml(motori)}</span>` : ''}
-            </div>
-            <div class="vin-contrib-vincheck">
-              VIN détecté : <code>${escHtml(vin)}</code><br>
-              <span class="vin-contrib-hint">Vérifier sur la carte grise <strong>champ E</strong> avant de confirmer</span>
-            </div>
-            ${wmiWarning}
+          <div class="vin-contrib-vincheck">
+            VIN détecté : <code>${escHtml(vin)}</code>
+            <div class="vin-contrib-hint">Vérifier sur la carte grise <strong>champ E</strong></div>
           </div>
+          <div class="vin-contrib-fields">
+            <div class="vin-contrib-field">
+              <label for="${id}_marque">Marque</label>
+              <input type="text" id="${id}_marque" value="${escHtml(suggestedMarque)}" placeholder="${escHtml(wmiBrand || 'ex: Renault')}" maxlength="50">
+            </div>
+            <div class="vin-contrib-field">
+              <label for="${id}_modele">Modèle</label>
+              <input type="text" id="${id}_modele" value="${escHtml(modele)}" placeholder="ex: Trafic III" maxlength="80">
+            </div>
+            <div class="vin-contrib-field vin-contrib-field-sm">
+              <label for="${id}_annee">Année</label>
+              <input type="number" id="${id}_annee" value="${escHtml(annee)}" placeholder="2020" min="1980" max="2050">
+            </div>
+            <div class="vin-contrib-field vin-contrib-field-lg">
+              <label for="${id}_motori">Motorisation</label>
+              <input type="text" id="${id}_motori" value="${escHtml(motori)}" placeholder="ex: 2.0 dCi 145" maxlength="120">
+            </div>
+          </div>
+          <div class="vin-contrib-warn-zone" id="${id}_warn"></div>
         </div>
         <div class="vin-contrib-actions">
-          <button class="btn btn-sm btn-primary" id="${id}_yes">✓ Confirmer</button>
-          <button class="btn btn-sm btn-outline" id="${id}_no">Non merci</button>
+          <button class="btn btn-sm btn-outline" id="${id}_no">Plus tard</button>
+          <button class="btn btn-sm btn-primary"  id="${id}_yes">✓ Partager</button>
         </div>
       </div>`;
+
     const host = document.getElementById('toastHost') || document.body;
     const wrap = document.createElement('div');
     wrap.innerHTML = html;
     host.appendChild(wrap.firstElementChild);
+    _vinContribOpen = true;
 
-    const close = () => { document.getElementById(id)?.remove(); };
+    const close = () => {
+      document.getElementById(id)?.remove();
+      _vinContribOpen = false;
+    };
+
+    const updateWmiWarn = () => {
+      const mq = document.getElementById(id + '_marque').value.trim();
+      const warn = document.getElementById(id + '_warn');
+      const check = checkVinWmiConsistency(vin, mq);
+      if (!check.ok && mq) {
+        warn.innerHTML = `<div class="vin-contrib-warn">⚠️ VIN commence par <strong>${escHtml(check.wmi)}</strong> (généralement <strong>${escHtml(check.expected)}</strong>). Vérifiez la marque.</div>`;
+      } else {
+        warn.innerHTML = '';
+      }
+    };
+    document.getElementById(id + '_marque').addEventListener('input', updateWmiWarn);
+    updateWmiWarn();
+
+    document.getElementById(id + '_close').addEventListener('click', close);
     document.getElementById(id + '_no').addEventListener('click', close);
     document.getElementById(id + '_yes').addEventListener('click', async () => {
-      // Confirmation supplémentaire si incohérence WMI
-      if (!wmiCheck.ok && !confirm(`Incohérence détectée :\nVIN commence par "${wmiCheck.wmi}" (${wmiCheck.expected}) mais vous indiquez "${wmiCheck.given}".\n\nConfirmer quand même la contribution ?`)) {
+      const mq = document.getElementById(id + '_marque').value.trim();
+      const md = document.getElementById(id + '_modele').value.trim();
+      const an = document.getElementById(id + '_annee').value.trim();
+      const mt = document.getElementById(id + '_motori').value.trim();
+      if (!mq || !md) {
+        toast('Marque et modèle obligatoires', 'warning');
+        return;
+      }
+      const check = checkVinWmiConsistency(vin, mq);
+      if (!check.ok && !confirm(`Incohérence détectée :\nVIN commence par "${check.wmi}" (${check.expected}) mais vous indiquez "${check.given}".\n\nConfirmer quand même la contribution ?`)) {
         return;
       }
       try {
         const r = await api('POST', '/api/vin/contribute', {
-          vin, marque, modele,
-          annee: annee ? parseInt(annee, 10) : null,
-          motorisation: motori || null,
+          vin, marque: mq, modele: md,
+          annee: an ? parseInt(an, 10) : null,
+          motorisation: mt || null,
         });
         close();
         if (r && r.ok) {
@@ -1549,8 +1602,8 @@ function maybeProposeVinContribution() {
       }
     });
 
-    // Auto-dismiss après 45s (un peu plus pour donner le temps de vérifier)
-    setTimeout(close, 45000);
+    // Auto-dismiss après 60s
+    setTimeout(close, 60000);
   } catch (_) {}
 }
 
@@ -1576,8 +1629,8 @@ async function saveDiagnostic() {
       state.diagSaved = true;
       document.getElementById('saveFeedback').classList.remove('hidden');
       toast('Diagnostic sauvegardé ✅', 'success');
-      // Proposer la contribution à la base VIN partagée si pas déjà community
-      maybeProposeVinContribution();
+      // (Le toast de contribution VIN s'affiche au moment de la lecture du
+      //  VIN, plus pertinent UX que le moment de save.)
       // ── Alerte régression kilométrique ──
       if (res.entry?.km_alerte_fraude) {
         const prev = (res.entry.km_prev  || 0).toLocaleString('fr');

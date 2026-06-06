@@ -1508,6 +1508,82 @@ a  { color: var(--accent); text-decoration: none; }
 [data-theme="dark"] .vin-conf-med  { color: #fbbf24; }
 [data-theme="dark"] .vin-conf-low  { color: #fca5a5; }
 
+/* Toast éditable (V2) : champs marque/modèle/année/motorisation */
+.vin-contrib-toast.vin-contrib-editable {
+  max-width: 460px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.vin-contrib-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.vin-contrib-header .vin-contrib-icon { font-size: 1.4rem; }
+.vin-contrib-header .vin-contrib-title {
+  flex: 1;
+  font-weight: 700;
+  color: var(--text-main);
+  font-size: 0.92rem;
+}
+.vin-contrib-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.vin-contrib-close:hover { color: var(--text-main); background: var(--bg-card2, rgba(0,0,0,.05)); }
+
+.vin-contrib-toast.vin-contrib-editable .vin-contrib-body {
+  padding: 12px 16px;
+}
+.vin-contrib-toast.vin-contrib-editable .vin-contrib-actions {
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.vin-contrib-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+  margin-top: 10px;
+}
+.vin-contrib-field { display: flex; flex-direction: column; gap: 4px; }
+.vin-contrib-field-sm { grid-column: span 1; }
+.vin-contrib-field-lg { grid-column: span 2; }
+.vin-contrib-field label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.vin-contrib-field input {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input, var(--bg-card));
+  color: var(--text-main);
+  font-size: 0.88rem;
+  font-family: inherit;
+}
+.vin-contrib-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow, rgba(168, 92, 74, .15));
+}
+.vin-contrib-warn-zone:empty { display: none; }
+
 /* Encart de vérification dans le toast de contribution */
 .vin-contrib-vehicle {
   font-size: 0.95rem;
