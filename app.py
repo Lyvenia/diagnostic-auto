@@ -113,6 +113,7 @@ from api.config_routes import bp as config_bp
 from api.support_routes import bp as support_bp
 from routes.lyvenia_auth import bp as lyvenia_auth_bp
 from routes.update_routes import bp as update_bp
+from routes.vin_db_proxy import bp as vin_db_proxy_bp
 
 app.register_blueprint(obd_bp)
 app.register_blueprint(analysis_bp)
@@ -122,6 +123,7 @@ app.register_blueprint(config_bp)
 app.register_blueprint(support_bp)
 app.register_blueprint(lyvenia_auth_bp)
 app.register_blueprint(update_bp)
+app.register_blueprint(vin_db_proxy_bp)
 
 
 # ── Error handlers globaux ────────────────────────────────────────────────────

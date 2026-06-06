@@ -943,13 +943,25 @@ async function startDiagnostic(opts) {
     updateStepContextualHint(2);
 
     // Décodage VIN immédiat (async, sans bloquer l'UI)
+    // Cascade : base partagée Lyvenia → WMI local → IA Claude
     if (state.currentDiag.vin) {
       api('POST', '/api/decode-vin', { vin: state.currentDiag.vin })
         .then(vi => {
           if (!vi || vi.error) return;
+          state.currentDiag.vehicle_decoded = vi;  // mémoriser pour contribution
           const label = [vi.marque, vi.modele, vi.annee ? `— ${vi.annee}` : '']
             .filter(s => s && s !== 'Inconnu').join(' ');
-          if (label) document.getElementById('vehicleLabel').textContent = label;
+          const vehicleLabelEl = document.getElementById('vehicleLabel');
+          if (label) {
+            // Badge source communauté si identification crowdsourcée
+            if (vi.source === 'community') {
+              const n = vi.shared_contributors || 0;
+              const verif = vi.shared_status === 'verified' ? '✓ vérifié' : 'suggéré';
+              vehicleLabelEl.innerHTML = `${escHtml(label)} <span class="vin-comm-badge" title="Identifié par la communauté RODIA">👥 ${verif} · ${n}</span>`;
+            } else {
+              vehicleLabelEl.textContent = label;
+            }
+          }
           // Pré-remplir les champs contexte si vides
           const fMarque = document.getElementById('ctxMarque');
           const fModele = document.getElementById('ctxModele');
@@ -1424,6 +1436,76 @@ function toggleCard(idx) {
 }
 
 // ════════════════════════════════════════════════════════
+//  BASE VIN PARTAGÉE — contribution post-diagnostic
+// ════════════════════════════════════════════════════════
+/** Propose à l'utilisateur de contribuer à la base VIN partagée après une
+ *  sauvegarde de diagnostic. Ne fait rien si :
+ *   - VIN absent ou ≠ 17 caractères (manuel sans VIN, ou VIN partiel)
+ *   - véhicule déjà identifié par la communauté (source === 'community')
+ *   - on n'a pas marque+modele valides à proposer */
+function maybeProposeVinContribution() {
+  try {
+    const vin = state.currentDiag.vin;
+    const vd  = state.currentDiag.vehicle_decoded || {};
+    if (!vin || vin.length !== 17) return;
+    if (vd.source === 'community') return;
+    const marque = (vd.marque || '').trim();
+    const modele = (vd.modele || '').trim();
+    if (!marque || marque === 'Inconnu' || !modele || modele === 'Inconnu') return;
+
+    const annee  = (vd.annee || '').toString().trim();
+    const motori = (vd.motorisation || '').trim();
+    const label  = `${marque} ${modele}${annee ? ' ' + annee : ''}`;
+
+    const payload = {
+      vin, marque, modele,
+      annee: annee ? parseInt(annee, 10) : null,
+      motorisation: motori || null,
+    };
+
+    // Toast persistant avec bouton de confirmation
+    const id = 'vinContribToast_' + Date.now();
+    const html = `
+      <div class="vin-contrib-toast" id="${id}">
+        <div class="vin-contrib-icon">👥</div>
+        <div class="vin-contrib-body">
+          <div class="vin-contrib-title">Aider la communauté RODIA ?</div>
+          <div class="vin-contrib-text">Confirmer ce véhicule (<strong>${escHtml(label)}</strong>) aidera les autres garagistes à l'identifier automatiquement.</div>
+        </div>
+        <div class="vin-contrib-actions">
+          <button class="btn btn-sm btn-primary" id="${id}_yes">✓ Confirmer</button>
+          <button class="btn btn-sm btn-outline" id="${id}_no">Non merci</button>
+        </div>
+      </div>`;
+    // Inject dans la zone toast container ou body
+    const host = document.getElementById('toastHost') || document.body;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = html;
+    host.appendChild(wrap.firstElementChild);
+
+    const close = () => { document.getElementById(id)?.remove(); };
+    document.getElementById(id + '_no').addEventListener('click', close);
+    document.getElementById(id + '_yes').addEventListener('click', async () => {
+      try {
+        const r = await api('POST', '/api/vin/contribute', payload);
+        close();
+        if (r && r.ok) {
+          toast(`🙏 Merci ! ${r.contributions_count > 1 ? `Confirmation #${r.contributions_count}` : '1ère identification'} pour ce VIN.`, 'success');
+        } else {
+          toast('Contribution prise en compte', 'info');
+        }
+      } catch (e) {
+        close();
+        toast('Impossible d\'enregistrer la contribution maintenant', 'warning');
+      }
+    });
+
+    // Auto-dismiss après 30s
+    setTimeout(close, 30000);
+  } catch (_) {}
+}
+
+// ════════════════════════════════════════════════════════
 //  SAVE DIAGNOSTIC
 // ════════════════════════════════════════════════════════
 async function saveDiagnostic() {
@@ -1445,6 +1527,8 @@ async function saveDiagnostic() {
       state.diagSaved = true;
       document.getElementById('saveFeedback').classList.remove('hidden');
       toast('Diagnostic sauvegardé ✅', 'success');
+      // Proposer la contribution à la base VIN partagée si pas déjà community
+      maybeProposeVinContribution();
       // ── Alerte régression kilométrique ──
       if (res.entry?.km_alerte_fraude) {
         const prev = (res.entry.km_prev  || 0).toLocaleString('fr');

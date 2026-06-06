@@ -25,13 +25,48 @@ def _log(msg):
 
 @bp.route("/api/decode-vin", methods=["POST"])
 def api_decode_vin():
-    """Décode un VIN rapidement (WMI local + NHTSA, pas d'IA) pour affichage immédiat."""
+    """Décode un VIN. Cascade :
+      1. Base VIN partagée Lyvenia (crowdsourcée) — la plus précise
+      2. WMI local + NHTSA (fallback hors-ligne)
+      3. IA Claude (fallback ultime)
+    """
+    import requests as _req
+    from core.auth_store import get_jwt as _get_jwt
+
     data = request.get_json() or {}
     vin = (data.get("vin") or "").strip().upper()
     if not vin or len(vin) < 11:
         return jsonify({"error": "VIN invalide"}), 400
+
+    # ── 1. Base communautaire Lyvenia (si VIN exactement 17 chars) ──
+    if len(vin) == 17:
+        try:
+            headers = {}
+            tok = _get_jwt()
+            if tok:
+                headers["Authorization"] = f"Bearer {tok}"
+            r = _req.get(f"https://api.lyvenia.fr/vin/{vin}", headers=headers, timeout=5)
+            if r.status_code == 200:
+                shared = r.json()
+                if shared.get("found") or shared.get("vin"):
+                    # Format compatible avec decode_vin pour l'UI
+                    return jsonify({
+                        "vin":          shared.get("vin", vin),
+                        "marque":       shared.get("marque", "Inconnu"),
+                        "modele":       shared.get("modele", "Inconnu"),
+                        "annee":        str(shared.get("annee") or ""),
+                        "motorisation": shared.get("motorisation", ""),
+                        "source":       "community",
+                        "shared_status":       shared.get("status"),
+                        "shared_contributors": shared.get("contributions_count"),
+                    })
+        except Exception:
+            pass  # silencieux — on retombe sur le décodage local
+
+    # ── 2. Décodage local (WMI + NHTSA + Claude en dernier) ──
     try:
         result = decode_vin(vin)
+        result["source"] = "local"
         return jsonify(result)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
