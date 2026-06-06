@@ -62,3 +62,27 @@ def vin_contribute_proxy():
     except requests.exceptions.RequestException as e:
         log.warning(f"[vin_db_proxy] contribute failed: {e}")
         return jsonify({"error": "Service indisponible"}), 503
+
+
+@bp.route("/api/vin/extract-cartegrise", methods=["POST"])
+def vin_extract_cartegrise_proxy():
+    """Forward la photo de carte grise pour extraction Claude Vision.
+    L'image est envoyée en base64 (champ image_base64) au backend Lyvenia
+    qui appelle Claude. RODIA ne stocke pas l'image en local."""
+    token = get_jwt()
+    if not token:
+        return jsonify({"error": "Connexion Lyvenia requise"}), 401
+
+    body = request.get_json(silent=True) or {}
+    try:
+        # Timeout plus long pour Vision : Claude met 5-15s
+        resp = requests.post(
+            f"{LYVENIA_API_URL}/vin/extract-cartegrise",
+            json=body,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        return jsonify(resp.json()), resp.status_code
+    except requests.exceptions.RequestException as e:
+        log.warning(f"[vin_db_proxy] extract-cartegrise failed: {e}")
+        return jsonify({"error": "Service IA temporairement indisponible"}), 503

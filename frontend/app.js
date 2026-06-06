@@ -1537,6 +1537,14 @@ function maybeProposeVinContribution() {
             </div>
           </div>
           <div class="vin-contrib-warn-zone" id="${id}_warn"></div>
+          <div class="vin-contrib-cg-zone">
+            <div class="vin-contrib-sep"><span>OU</span></div>
+            <button type="button" class="vin-cg-btn" id="${id}_cg" title="L'image est analysée par Claude — jamais stockée">
+              📷 Auto-remplir depuis la carte grise
+            </button>
+            <input type="file" id="${id}_cg_file" accept="image/jpeg,image/png,image/webp" capture="environment" style="display:none">
+            <div class="vin-cg-status" id="${id}_cg_status"></div>
+          </div>
         </div>
         <div class="vin-contrib-actions">
           <button class="btn btn-sm btn-outline" id="${id}_no">Plus tard</button>
@@ -1570,6 +1578,60 @@ function maybeProposeVinContribution() {
 
     document.getElementById(id + '_close').addEventListener('click', close);
     document.getElementById(id + '_no').addEventListener('click', close);
+
+    // ── Bouton 📷 carte grise : ouvrir le file picker ──
+    const cgBtn  = document.getElementById(id + '_cg');
+    const cgFile = document.getElementById(id + '_cg_file');
+    const cgStat = document.getElementById(id + '_cg_status');
+    cgBtn.addEventListener('click', () => cgFile.click());
+
+    cgFile.addEventListener('change', async () => {
+      const file = cgFile.files[0];
+      if (!file) return;
+      // Confirme la non-rétention de l'image avant envoi
+      if (!confirm("La photo de la carte grise va être analysée par Claude (Anthropic) :\n\n• Les champs techniques (VIN, marque, modèle, année, motorisation) sont extraits puis pré-remplis dans le formulaire.\n• Les données personnelles (nom, adresse) sont ignorées par l'IA.\n• La photo n'est ni stockée chez Lyvenia ni utilisée pour entraîner Claude.\n\nContinuer ?")) {
+        cgFile.value = '';
+        return;
+      }
+      cgStat.innerHTML = '<span class="vin-cg-loading">⏳ Extraction en cours…</span>';
+      cgBtn.disabled = true;
+      try {
+        // Convertir l'image en base64
+        const b64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);  // strip data:...;base64,
+          reader.onerror = () => reject(new Error('Lecture du fichier impossible'));
+          reader.readAsDataURL(file);
+        });
+        const r = await api('POST', '/api/vin/extract-cartegrise', {
+          image_base64: b64,
+          media_type: file.type || 'image/jpeg',
+        });
+        if (r && r.ok) {
+          // Pré-remplir les champs avec ce qu'a trouvé Claude
+          if (r.marque)       document.getElementById(id + '_marque').value = r.marque;
+          if (r.modele)       document.getElementById(id + '_modele').value = r.modele;
+          if (r.annee)        document.getElementById(id + '_annee').value  = r.annee;
+          if (r.motorisation) document.getElementById(id + '_motori').value = r.motorisation;
+          // VIN : on vérifie qu'il matche celui détecté par OBD (sinon on alerte)
+          if (r.vin && state.currentDiag.vin && r.vin !== state.currentDiag.vin) {
+            cgStat.innerHTML = `<span class="vin-cg-warn">⚠️ VIN photo (${r.vin}) ≠ VIN OBD (${state.currentDiag.vin}). Vérifiez.</span>`;
+          } else {
+            const conf = r.confiance ? ` (confiance ${Math.round(r.confiance * 100)}%)` : '';
+            cgStat.innerHTML = `<span class="vin-cg-success">✓ Données extraites${conf} — vérifiez et cliquez Partager</span>`;
+          }
+          updateWmiWarn();  // re-check WMI cohérence avec les nouvelles valeurs
+        } else {
+          cgStat.innerHTML = `<span class="vin-cg-error">✗ ${escHtml(r?.error || 'Échec extraction')}</span>`;
+        }
+      } catch (e) {
+        cgStat.innerHTML = `<span class="vin-cg-error">✗ ${escHtml(e.message || 'Erreur réseau')}</span>`;
+      } finally {
+        cgBtn.disabled = false;
+        cgFile.value = '';
+      }
+    });
+
     document.getElementById(id + '_yes').addEventListener('click', async () => {
       const mq = document.getElementById(id + '_marque').value.trim();
       const md = document.getElementById(id + '_modele').value.trim();

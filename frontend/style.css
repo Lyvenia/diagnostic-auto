@@ -1584,6 +1584,71 @@ a  { color: var(--accent); text-decoration: none; }
 }
 .vin-contrib-warn-zone:empty { display: none; }
 
+/* Carte grise extraction zone */
+.vin-contrib-cg-zone {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.vin-contrib-sep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.vin-contrib-sep::before,
+.vin-contrib-sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.vin-cg-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-glow, rgba(168, 92, 74, .08));
+  color: var(--accent);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+}
+.vin-cg-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.vin-cg-btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+  transform: none;
+}
+.vin-cg-status {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  text-align: center;
+  min-height: 1.2em;
+}
+.vin-cg-status:empty { display: none; }
+.vin-cg-loading { color: var(--text-dim); }
+.vin-cg-success { color: #15803d; font-weight: 600; }
+.vin-cg-warn    { color: #b45309; font-weight: 600; }
+.vin-cg-error   { color: #b91c1c; font-weight: 600; }
+[data-theme="dark"] .vin-cg-success { color: #86efac; }
+[data-theme="dark"] .vin-cg-warn    { color: #fcd34d; }
+[data-theme="dark"] .vin-cg-error   { color: #fca5a5; }
+
 /* Encart de vérification dans le toast de contribution */
 .vin-contrib-vehicle {
   font-size: 0.95rem;
