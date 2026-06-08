@@ -92,13 +92,21 @@ def read_vin(self):
         if was_running and self.connection:
             self._start_cache_thread()
 
-    # Si on a au moins 1 VIN valide mais pas de consensus, on log et on rejette
+    # ── Fallback (1.1.12) : pas de consensus mais on a au moins 1 lecture valide ──
+    # Plutôt que de rejeter et forcer la saisie manuelle, on accepte la lecture
+    # la plus fréquente. Le consensus à 2× était trop strict en pratique sur
+    # les véhicules dont l'ELM327 sort le VIN qu'une fois sur N tentatives.
+    # Risque résiduel : 1-2% de VIN partiellement corrompus, absorbés par la
+    # logique multi-vote de la base partagée (suggested → verified).
     if seen_vins:
+        from collections import Counter
+        most = Counter(seen_vins).most_common(1)[0]
         self._log_vin_error(
-            f"VIN sans consensus apres {len(seen_vins)} lectures valides : "
-            f"{seen_vins} → frontend va proposer saisie manuelle"
+            f"VIN sans consensus, on accepte le plus frequent : "
+            f"{most[0]} ({most[1]}x sur {len(seen_vins)} lectures)"
         )
-    elif best_invalid:
+        return most[0]
+    if best_invalid:
         self._log_vin_error(
             f"VIN abandonne — meilleur candidat invalide : {best_invalid!r}"
         )

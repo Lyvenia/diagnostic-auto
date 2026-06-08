@@ -786,7 +786,8 @@ function cleanVinInput(s) {
 
 /** Ouvre la modale de saisie manuelle du VIN. Résout avec le VIN propre (17
  *  chars) ou null si l'utilisateur a annulé. Utilisée en filet de sécurité
- *  quand la lecture OBD a échoué ou rend un VIN invalide. */
+ *  quand la lecture OBD a échoué ou rend un VIN invalide.
+ *  Propose aussi en option : sélection d'un véhicule existant de la flotte. */
 function askManualVin() {
   return new Promise((resolve) => {
     const modal  = document.getElementById('modalManualVin');
@@ -794,12 +795,30 @@ function askManualVin() {
     const btnOk  = document.getElementById('btnManualVinOk');
     const btnCa  = document.getElementById('btnManualVinCancel');
     const hint   = document.getElementById('manualVinHint');
+    const fleetRow    = document.getElementById('manualVinFleetRow');
+    const fleetSelect = document.getElementById('manualVinFleetSelect');
     if (!modal || !input || !btnOk || !btnCa) { resolve(null); return; }
 
     input.value = '';
     hint.textContent = '0 / 17 caractères';
     hint.style.color = 'var(--text-muted)';
     btnOk.disabled = true;
+
+    // Peupler la liste des véhicules existants de la flotte (si dispo)
+    if (fleetRow && fleetSelect) {
+      const fleet = (state.fleet || []).filter(v => v.vin && v.vin.length === 17 && !v.vin.startsWith('MANUEL_'));
+      if (fleet.length > 0) {
+        fleetSelect.innerHTML = '<option value="">— Choisir un véhicule —</option>' +
+          fleet.map(v => {
+            const lbl = [v.marque, v.modele, v.annee, v.surnom && `« ${v.surnom} »`].filter(Boolean).join(' ');
+            return `<option value="${escHtml(v.vin)}">${escHtml(lbl || v.vin)}</option>`;
+          }).join('');
+        fleetRow.style.display = '';
+      } else {
+        fleetRow.style.display = 'none';
+      }
+    }
+
     modal.classList.remove('hidden');
     setTimeout(() => input.focus(), 50);
 
@@ -824,6 +843,10 @@ function askManualVin() {
       btnCa.removeEventListener('click', onCancel);
       input.removeEventListener('keydown', onKey);
       input.removeEventListener('input', updateHint);
+      // onFleetSelect est défini juste après dans le scope — guard si jamais
+      if (typeof onFleetSelect === 'function') {
+        fleetSelect?.removeEventListener('change', onFleetSelect);
+      }
       resolve(result);
     }
     function onOk() {
@@ -836,10 +859,22 @@ function askManualVin() {
       else if (e.key === 'Escape') onCancel();
     }
 
+    // Sélecteur véhicule existant : remplit le champ VIN et valide direct
+    const onFleetSelect = () => {
+      if (!fleetSelect) return;
+      const v = fleetSelect.value;
+      if (v) {
+        input.value = v;
+        updateHint();
+        setTimeout(() => btnOk.focus(), 50);  // pour pouvoir valider à l'Entrée
+      }
+    };
+
     btnOk.addEventListener('click', onOk);
     btnCa.addEventListener('click', onCancel);
     input.addEventListener('keydown', onKey);
     input.addEventListener('input', updateHint);
+    fleetSelect?.addEventListener('change', onFleetSelect);
   });
 }
 
@@ -1558,7 +1593,15 @@ function maybeProposeVinContribution() {
     host.appendChild(wrap.firstElementChild);
     _vinContribOpen = true;
 
+    // Auto-dismiss différé : timer désactivable dès qu'on commence à interagir
+    // (sélection photo carte grise, saisie dans un champ, etc.)
+    let _dismissTimer = setTimeout(() => close(), 60000);
+    const _cancelDismiss = () => {
+      if (_dismissTimer) { clearTimeout(_dismissTimer); _dismissTimer = null; }
+    };
+
     const close = () => {
+      _cancelDismiss();
       document.getElementById(id)?.remove();
       _vinContribOpen = false;
     };
@@ -1583,7 +1626,14 @@ function maybeProposeVinContribution() {
     const cgBtn  = document.getElementById(id + '_cg');
     const cgFile = document.getElementById(id + '_cg_file');
     const cgStat = document.getElementById(id + '_cg_status');
-    cgBtn.addEventListener('click', () => cgFile.click());
+    cgBtn.addEventListener('click', () => {
+      _cancelDismiss();    // l'utilisateur interagit : on ne ferme plus tout seul
+      cgFile.click();
+    });
+    // Annule aussi le timer si l'utilisateur tape dans un champ
+    ['_marque','_modele','_annee','_motori'].forEach(suffix => {
+      document.getElementById(id + suffix)?.addEventListener('input', _cancelDismiss, { once: true });
+    });
 
     cgFile.addEventListener('change', async () => {
       const file = cgFile.files[0];
@@ -1664,8 +1714,7 @@ function maybeProposeVinContribution() {
       }
     });
 
-    // Auto-dismiss après 60s
-    setTimeout(close, 60000);
+    // (Auto-dismiss déjà armé en début de fonction ; annulé dès interaction.)
   } catch (_) {}
 }
 

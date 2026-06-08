@@ -1475,6 +1475,15 @@
         <li>la <strong>carte grise</strong>, champ <strong>E</strong></li>
         <li>la <strong>plaque VIN</strong> sous le pare-brise ou sur le montant de portière conducteur</li>
       </ul>
+      <div class="form-row" id="manualVinFleetRow" style="display:none">
+        <label for="manualVinFleetSelect">🚚 Reprendre un véhicule de ma flotte</label>
+        <select id="manualVinFleetSelect" class="form-input" style="font-size:.9rem">
+          <option value="">— Choisir un véhicule —</option>
+        </select>
+        <div class="form-hint" style="margin-top:6px;font-size:.78rem;color:var(--text-muted)">
+          Évite de re-saisir le VIN si le véhicule est déjà dans ta flotte
+        </div>
+      </div>
       <div class="form-row">
         <label for="manualVinInput">VIN (17 caractères)</label>
         <input type="text" id="manualVinInput" class="form-input" placeholder="VF1FL000358661286" maxlength="17" autocomplete="off" spellcheck="false" style="font-family:ui-monospace,monospace;letter-spacing:.04em;text-transform:uppercase">
