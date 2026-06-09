@@ -1,2 +1,2 @@
 """Version de RODIA — à incrémenter avant chaque rebuild PyInstaller."""
-RODIA_VERSION = "1.1.12"
+RODIA_VERSION = "1.1.13"

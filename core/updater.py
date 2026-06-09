@@ -190,6 +190,17 @@ def prepare_update_script(
         with open(ps1_path, "w", encoding="utf-8-sig") as f:
             f.write(ps1)
 
+        # Flags Windows pour TRUE detachment : si l'utilisateur ferme RODIA
+        # à la hache pendant la mise à jour, le script PowerShell continue.
+        # - CREATE_NO_WINDOW        : pas de console visible
+        # - DETACHED_PROCESS        : pas attaché à la console parent
+        # - CREATE_BREAKAWAY_FROM_JOB : sort du job object parent (ex: Edge)
+        DETACHED_PROCESS           = 0x00000008
+        CREATE_BREAKAWAY_FROM_JOB  = 0x01000000
+        _flags = (subprocess.CREATE_NO_WINDOW
+                  | DETACHED_PROCESS
+                  | CREATE_BREAKAWAY_FROM_JOB)
+
         subprocess.Popen(
             [
                 "powershell.exe",
@@ -199,7 +210,7 @@ def prepare_update_script(
                 "-ExecutionPolicy", "Bypass",
                 "-File", ps1_path,
             ],
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            creationflags=_flags,
             close_fds=True,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,

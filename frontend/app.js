@@ -6855,83 +6855,8 @@ function setupUserMenu() {
   });
 }
 
-/* ── Plein écran : bouton topbar + mémoire de préférence ──────── */
-
-const FULLSCREEN_KEY  = 'rodiaFullscreen';      // '1' = maximisé, '0' = fenêtré
-const WINDOW_SIZE_KEY = 'rodiaWindowSize';      // {w, h} de la dernière taille fenêtrée
-
-/** True si la fenêtre couvre déjà la zone de travail (max, sans la barre Windows). */
-function _isMaximized() {
-  return window.innerWidth  >= screen.availWidth  - 8
-      && window.innerHeight >= screen.availHeight - 8;
-}
-
-function _updateFullscreenIcon() {
-  const btn = document.getElementById('btnFullscreen');
-  if (!btn) return;
-  const maxed = _isMaximized();
-  const enter = btn.querySelector('.fs-icon-enter');
-  const exit  = btn.querySelector('.fs-icon-exit');
-  if (enter) enter.classList.toggle('hidden', maxed);
-  if (exit)  exit.classList.toggle('hidden', !maxed);
-  btn.title = maxed ? 'Réduire la fenêtre' : 'Plein écran (max — barre Windows visible)';
-}
-
-/** Bascule entre fenêtré et "max sans barre Windows". On utilise window.resizeTo
- *  + screen.availWidth/availHeight (qui EXCLUENT la barre des tâches) au lieu
- *  de la Fullscreen API (qui cache tout). */
-function toggleFullscreen() {
-  if (_isMaximized()) {
-    // Restaure la taille précédente sauvegardée (défaut 1280×800)
-    let prev = { w: 1280, h: 800 };
-    try { prev = JSON.parse(localStorage.getItem(WINDOW_SIZE_KEY) || '{}'); } catch {}
-    if (!prev.w || !prev.h) prev = { w: 1280, h: 800 };
-    window.resizeTo(prev.w, prev.h);
-    window.moveTo(Math.max(0, (screen.availWidth - prev.w) / 2),
-                  Math.max(0, (screen.availHeight - prev.h) / 2));
-    savePref(FULLSCREEN_KEY, '0');
-  } else {
-    // Sauvegarde la taille actuelle pour pouvoir la restaurer
-    savePref(WINDOW_SIZE_KEY,
-      JSON.stringify({ w: window.innerWidth, h: window.innerHeight }));
-    window.moveTo(0, 0);
-    window.resizeTo(screen.availWidth, screen.availHeight);
-    savePref(FULLSCREEN_KEY, '1');
-  }
-  setTimeout(_updateFullscreenIcon, 100);
-}
-
-function setupFullscreen() {
-  const btn = document.getElementById('btnFullscreen');
-  if (!btn) return;
-  btn.addEventListener('click', toggleFullscreen);
-  window.addEventListener('resize', _updateFullscreenIcon);
-
-  // Comportement par défaut : maximisé (--start-maximized ne prend pas toujours).
-  // L'utilisateur peut basculer en fenêtré via le bouton → on stocke '0'.
-  const pref = localStorage.getItem(FULLSCREEN_KEY);
-  setTimeout(() => {
-    if (pref === '0') {
-      // Préférence explicite fenêtré → on restaure la taille sauvegardée
-      let prev = { w: 1280, h: 800 };
-      try { prev = JSON.parse(localStorage.getItem(WINDOW_SIZE_KEY) || '{}'); } catch {}
-      if (!prev.w || !prev.h) prev = { w: 1280, h: 800 };
-      if (_isMaximized()) {
-        window.resizeTo(prev.w, prev.h);
-        window.moveTo(Math.max(0, (screen.availWidth - prev.w) / 2),
-                      Math.max(0, (screen.availHeight - prev.h) / 2));
-      }
-    } else {
-      // Défaut OU pref=='1' → maximiser (au cas où --start-maximized a échoué)
-      if (!_isMaximized()) {
-        window.moveTo(0, 0);
-        window.resizeTo(screen.availWidth, screen.availHeight);
-      }
-    }
-    _updateFullscreenIcon();
-  }, 150);
-  _updateFullscreenIcon();
-}
+/* Note : la maximisation est gérée côté Python via ctypes ShowWindow
+ * (cf. main.py::_maximize_rodia_window_async). Plus besoin de bouton ni de JS. */
 
 /* ── Setup help menu ──────────────────────────────────────────── */
 
@@ -7309,7 +7234,7 @@ function setupDangerZone() {
 
 async function init() {
   // Préférences serveur d'abord — seed localStorage avant tout le reste
-  // (applyTheme, refreshUserDisplay, setupFullscreen lisent localStorage)
+  // (applyTheme, refreshUserDisplay lisent localStorage)
   await loadPrefs();
 
   setupEvents();
@@ -7317,7 +7242,6 @@ async function init() {
   setupAuthEvents();
   setupUserMenu();
   setupHelpMenu();
-  setupFullscreen();
   setupSearchPalette();
   setupAnamneseFlow();
   closeBugReportSetup();
