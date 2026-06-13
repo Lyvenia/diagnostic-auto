@@ -3,6 +3,7 @@ import logging
 import os
 import time as _t
 import threading
+from urllib.parse import urlparse
 from flask import Blueprint, jsonify, request
 from core.updater import check_update, prepare_update_script
 from core.version import RODIA_VERSION
@@ -11,6 +12,26 @@ from core.paths import LOG_PATH
 log = logging.getLogger(__name__)
 
 bp = Blueprint("update", __name__, url_prefix="/api")
+
+
+# Hôtes autorisés pour télécharger un installeur RODIA. GitHub redirige souvent
+# le download direct vers objects.githubusercontent.com → on whitelist les deux.
+# Le `/Lyvenia/` dans le path empêche un attaquant de pointer vers le repo
+# d'un autre user GitHub.
+_ALLOWED_UPDATE_HOSTS = {"github.com", "objects.githubusercontent.com"}
+
+
+def _is_trusted_url(url: str) -> bool:
+    """True si l'URL est un download HTTPS vers une release de l'org Lyvenia."""
+    try:
+        p = urlparse(url)
+        return (
+            p.scheme == "https"
+            and p.netloc in _ALLOWED_UPDATE_HOSTS
+            and "/Lyvenia/" in p.path
+        )
+    except Exception:
+        return False
 
 
 def _log(msg: str):
@@ -32,19 +53,20 @@ def version_info():
     })
 
 
-@bp.route("/apply-update", methods=["POST", "GET"])
+@bp.route("/apply-update", methods=["POST"])
 def apply_update():
     """Lance le script PowerShell d'installation silencieuse puis ferme RODIA 5s plus tard.
 
-    Body JSON :
+    Body JSON (POST uniquement — GET refusé pour éviter qu'un lien malveillant
+    déclenche l'install via une simple navigation) :
         {
-            "download_url": "https://github.com/.../RODIA-Setup-vX.Y.Z.exe",
+            "download_url": "https://github.com/Lyvenia/.../RODIA-Setup-vX.Y.Z.exe",
             "sha256":       "abc123…" (optionnel — vérification d'intégrité),
             "version":      "1.1.4" (optionnel — affichée dans le toast Windows)
         }
 
     Le script :
-      - télécharge l'installateur
+      - télécharge l'installateur (URL whitelistée à github.com / Lyvenia/*)
       - vérifie le SHA-256 si fourni
       - kill RODIA + WebView Edge
       - lance Inno Setup en /VERYSILENT (aucune fenêtre)
@@ -52,18 +74,20 @@ def apply_update():
     """
     _log(f"apply-update appelé — method={request.method}")
 
-    # Support JSON body (POST) ou query params (GET)
-    url     = request.args.get("url", "")
-    sha256  = request.args.get("sha256", "")
-    version = request.args.get("version", "")
-    if not url:
-        data    = request.get_json(force=True, silent=True) or {}
-        url     = data.get("download_url", "")
-        sha256  = sha256 or data.get("sha256", "") or ""
-        version = version or data.get("version", "") or ""
+    data    = request.get_json(force=True, silent=True) or {}
+    url     = data.get("download_url", "")
+    sha256  = data.get("sha256", "") or ""
+    version = data.get("version", "") or ""
     if not url:
         _log("URL manquante — 400")
         return jsonify({"error": "URL de téléchargement manquante"}), 400
+
+    # Garde-fou anti-SSRF / supply-chain : seules les URLs de release officielles
+    # Lyvenia sur GitHub sont autorisées. Empêche un attaquant qui aurait le CSRF
+    # de pointer vers un .exe malveillant.
+    if not _is_trusted_url(url):
+        _log(f"URL REFUSÉE (non whitelistée) : {url[:120]}")
+        return jsonify({"error": "URL de mise à jour non autorisée"}), 403
 
     _log(f"Préparation script PowerShell — url={url[:80]} sha256={(sha256 or '')[:12]}… version={version!r}")
     ok = prepare_update_script(url, sha256=sha256 or None, version=version or None)

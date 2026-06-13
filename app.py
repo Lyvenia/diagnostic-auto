@@ -36,7 +36,9 @@ def _find_static_folder() -> str:
 
 _static_folder = _find_static_folder()
 app = Flask(__name__, static_folder=_static_folder, static_url_path="")
-CORS(app)
+# CORS restreint au serveur Flask local. Évite qu'un site malveillant ouvert
+# dans Edge appelle l'API RODIA via le poste de l'utilisateur (CSRF / SSRF).
+CORS(app, origins=["http://127.0.0.1:5000", "http://localhost:5000"])
 
 # ── Cache frontend ────────────────────────────────────────────────────────────
 _frontend_cache: dict = {}

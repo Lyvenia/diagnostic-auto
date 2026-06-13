@@ -22,6 +22,11 @@ ui_prefs.json
 Ports
 RODIA_CLIENT
 
+# Artefacts de test (ne doivent pas être versionnés)
+_test_*.pdf
+test_output.pdf
+flotte.demo.json
+
 # Profil Edge dev (créé par main.py en mode dev)
 edge-profile/
 

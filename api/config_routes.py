@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from shared import obd, fleet
 from core.config import load_config, save_config
 from core.paths import data_path
+from core.version import RODIA_VERSION
 from datetime import datetime
 import json
 import time as _t
@@ -9,7 +10,8 @@ import os
 
 bp = Blueprint('config', __name__)
 
-APP_VERSION = "1.0.0"
+# Source de vérité unique : core/version.py (bumpé par release.py)
+APP_VERSION = RODIA_VERSION
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Préférences UI persistées côté serveur (ui_prefs.json dans %APPDATA%\RODIA)
