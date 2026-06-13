@@ -11,6 +11,7 @@ import hardware.dtc as _dtc
 import hardware.realtime as _rt
 import hardware.monitoring as _mon
 import hardware.simulation as _sim
+import hardware.odometer as _odo
 
 ANOMALY_THRESHOLDS = {
     "temp_warning": 95,
@@ -59,6 +60,9 @@ class OBDReader:
     read_realtime      = _rt.read_realtime
     read_freeze_frame  = _rt.read_freeze_frame
     _simulate_freeze_frame = _rt._simulate_freeze_frame
+
+    # ── Kilométrage ────────────────────────────────────────
+    read_odometer      = _odo.read_odometer
 
     # ── Monitoring ─────────────────────────────────────────
     start_monitoring    = _mon.start_monitoring

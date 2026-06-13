@@ -177,6 +177,69 @@ class FleetManager:
                 self.fleet[vin].update(info)
                 self._save()
 
+    def record_odometer(self, vin: str, km: int, source: str = "obd_pid_a6",
+                        force: bool = False) -> dict:
+        """Enregistre une lecture kilométrique pour un véhicule.
+
+        Args:
+            vin    : VIN du véhicule (doit déjà exister dans la flotte).
+            km     : kilométrage en kilomètres (entier positif).
+            source : "obd_pid_a6" | "manual" | "simulation".
+            force  : si True, accepte un km inférieur au dernier connu
+                     (ex: utilisateur confirme manuellement après un compteur trafiqué).
+
+        Retourne :
+            {
+                "ok":        bool,
+                "reason":    "...",                     # si ok=False
+                "previous":  int | None,                # dernier km connu (avant)
+                "km":        int,                       # km enregistré
+                "vehicle":   {...}                      # véhicule mis à jour si ok
+            }
+        """
+        with self._lock:
+            vehicle = self.fleet.get(vin)
+            if not vehicle:
+                return {"ok": False, "reason": "vehicle_not_found", "km": km}
+
+            try:
+                km = int(km)
+            except (TypeError, ValueError):
+                return {"ok": False, "reason": "invalid_km", "km": 0}
+            if km < 0 or km > 2_000_000:
+                return {"ok": False, "reason": "invalid_km", "km": km}
+
+            previous = vehicle.get("dernier_km")
+            # Garde-fou : un km qui DIMINUE = erreur de lecture ou compteur trafiqué.
+            # On bloque, sauf si l'utilisateur force (cas légitime : compteur
+            # remplacé après panne tableau de bord).
+            if previous is not None and km < previous and not force:
+                return {
+                    "ok":       False,
+                    "reason":   "km_decroissant",
+                    "previous": previous,
+                    "km":       km,
+                }
+
+            # Historique : append-only, garde toutes les lectures
+            historique = vehicle.setdefault("historique_km", [])
+            historique.append({
+                "date":   datetime.now().isoformat(),
+                "km":     km,
+                "source": source,
+            })
+            vehicle["dernier_km"]        = km
+            vehicle["dernier_km_source"] = source
+            vehicle["dernier_km_date"]   = datetime.now().isoformat()
+
+            self._save()
+            return {
+                "ok":       True,
+                "previous": previous,
+                "km":       km,
+                "vehicle":  dict(vehicle),
+            }
+
     def update_vehicle_fleet_info(self, vin: str, code: str, surnom: str, groupe: str) -> dict | None:
         """Update code, surnom and groupe for a vehicle. Returns updated vehicle."""
         with self._lock:

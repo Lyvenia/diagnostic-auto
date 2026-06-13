@@ -1395,6 +1395,28 @@ a  { color: var(--accent); text-decoration: none; }
 }
 .sim-tag.hidden { display: none; }
 
+/* Badge kilométrage dans le bandeau véhicule */
+.odo-display {
+  font-size: 0.78rem;
+  background: rgba(45, 90, 39, .08);
+  border: 1px solid rgba(45, 90, 39, .3);
+  color: var(--green);
+  padding: 3px 10px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.odo-display.hidden { display: none; }
+.odo-display .odo-badge {
+  font-size: 0.68rem;
+  font-weight: 500;
+  opacity: 0.7;
+  padding-left: 6px;
+  border-left: 1px solid rgba(45, 90, 39, .25);
+}
+
 /* ══════════════════════════════════════════════════════
    SECTIONS
 ══════════════════════════════════════════════════════ */

@@ -979,6 +979,12 @@ async function startDiagnostic(opts) {
     wizardActivateStep(2);
     updateStepContextualHint(2);
 
+    // Lecture kilométrage en arrière-plan (auto si OBD répond, sinon prompt manuel).
+    // Async, ne bloque pas l'UI. Persisté dans flotte.json avec garde-fou anti-décroissance.
+    if (state.currentDiag.vin) {
+      fetchOdometerAuto(state.currentDiag.vin);
+    }
+
     // Décodage VIN immédiat (async, sans bloquer l'UI)
     // Cascade : base partagée Lyvenia → WMI local → IA Claude
     if (state.currentDiag.vin) {
@@ -1522,6 +1528,104 @@ function checkVinWmiConsistency(vin, marque) {
  *   - véhicule déjà confirmé par la communauté (verified)
  *   - toast déjà ouvert pour ce diag (anti-doublon) */
 let _vinContribOpen = false;
+
+/* ── Lecture kilométrage ────────────────────────────────────────────
+ *
+ *  Flow : essai automatique OBD (PID A6, ~2019+) → si KO, prompt manuel.
+ *  Persisté dans flotte.json avec garde-fou anti-décroissance.            */
+
+/** Affiche le km dans le bandeau véhicule avec badge source. */
+function displayOdometer(km, source) {
+  const el = document.getElementById('vehicleOdometer');
+  if (!el || !km) return;
+  const sourceBadge = source === 'manual'
+    ? '✏️ saisi'
+    : source === 'simulation'
+      ? '🧪 simu'
+      : '📡 OBD';
+  const fmt = Number(km).toLocaleString('fr-FR');
+  el.innerHTML = `📏 <strong>${fmt} km</strong> <span class="odo-badge">${sourceBadge}</span>`;
+  el.classList.remove('hidden');
+}
+
+/** Tente la lecture OBD ; si échec, bascule sur saisie manuelle. */
+async function fetchOdometerAuto(vin) {
+  if (!vin) return;
+  try {
+    const result = await api('POST', '/api/odometer/read', { vin });
+
+    if (result && result.ok) {
+      displayOdometer(result.km, result.source);
+      return;
+    }
+
+    // Cas km < dernier connu : confirmation utilisateur (compteur trafiqué ?
+    // Tableau de bord remplacé ? Sinon, erreur de lecture probable).
+    if (result && result.reason === 'km_decroissant') {
+      const prevFmt = Number(result.previous || 0).toLocaleString('fr-FR');
+      const kmFmt   = Number(result.km).toLocaleString('fr-FR');
+      const ok = confirm(
+        `⚠️ Kilométrage lu (${kmFmt} km) inférieur au dernier connu (${prevFmt} km).\n\n` +
+        `Causes possibles :\n` +
+        `• Compteur tableau de bord remplacé (légitime)\n` +
+        `• Compteur trafiqué\n` +
+        `• Erreur de lecture OBD\n\n` +
+        `Enregistrer quand même la valeur lue ?`
+      );
+      if (ok) {
+        await api('POST', '/api/odometer/manual',
+                  { vin, km: result.km, force: true });
+        displayOdometer(result.km, 'obd_pid_a6');
+      }
+      return;
+    }
+
+    // Sinon (not_supported, vehicle_not_found, etc.) → saisie manuelle
+    await promptManualOdometer(vin);
+  } catch (e) {
+    console.warn('Lecture odomètre échouée', e);
+  }
+}
+
+/** Demande à l'utilisateur de saisir le km manuellement (pré-rempli si connu). */
+async function promptManualOdometer(vin) {
+  // Pré-remplissage : on cherche le dernier km connu pour ce VIN dans la flotte
+  let lastKm = '';
+  try {
+    const veh = (state.fleet || []).find(v => v.vin === vin);
+    if (veh && veh.dernier_km) lastKm = String(veh.dernier_km);
+  } catch {}
+
+  const input = prompt(
+    `Kilométrage non lisible via OBD pour ce véhicule.\n` +
+    `Saisissez le kilométrage actuel (vide pour passer) :`,
+    lastKm
+  );
+  if (input === null || input.trim() === '') return;
+
+  const km = parseInt(input.replace(/[\s ]/g, ''), 10);
+  if (isNaN(km) || km < 0 || km > 2_000_000) {
+    toast('Kilométrage invalide', 'warning');
+    return;
+  }
+
+  let result = await api('POST', '/api/odometer/manual', { vin, km });
+
+  if (!result.ok && result.reason === 'km_decroissant') {
+    const prevFmt = Number(result.previous || 0).toLocaleString('fr-FR');
+    const ok = confirm(
+      `⚠️ La valeur saisie (${km.toLocaleString('fr-FR')} km) est inférieure au ` +
+      `dernier kilométrage connu (${prevFmt} km).\n\nValider quand même ?`
+    );
+    if (!ok) return;
+    result = await api('POST', '/api/odometer/manual', { vin, km, force: true });
+  }
+
+  if (result.ok) {
+    displayOdometer(km, 'manual');
+    toast(`Kilométrage enregistré : ${km.toLocaleString('fr-FR')} km`, 'success');
+  }
+}
 
 function maybeProposeVinContribution() {
   try {

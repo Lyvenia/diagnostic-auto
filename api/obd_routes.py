@@ -41,6 +41,68 @@ def api_simulation_toggle():
     return jsonify(obd.toggle_simulation(enabled))
 
 
+@bp.route("/api/odometer/read", methods=["POST"])
+def api_odometer_read():
+    """Tente de lire le kilométrage via OBD (PID A6).
+
+    Body JSON optionnel :
+        { "vin": "VF1..." }   -> si fourni, enregistre dans la flotte
+
+    Réponses :
+        200 { "ok": true,  "km": 145320, "source": "obd_pid_a6", ... }
+        200 { "ok": false, "reason": "not_supported" }
+        200 { "ok": false, "reason": "km_decroissant", "previous": 150000, "km": 145320 }
+            -> le frontend doit demander confirmation puis renvoyer avec "force": true
+    """
+    data    = request.get_json(silent=True) or {}
+    vin     = (data.get("vin") or "").strip().upper() or None
+
+    result = obd.read_odometer()
+    if not result:
+        return jsonify({"ok": False, "reason": "not_supported"})
+
+    km     = result["km"]
+    source = result["source"]
+    _log(f"[odometer] lecture OBD : {km} km (source={source}) vin={vin!r}")
+
+    # Si VIN connu, on persiste dans la flotte (avec garde-fou anti-décroissance)
+    if vin:
+        rec = fleet.record_odometer(vin, km, source=source)
+        if not rec["ok"]:
+            return jsonify({**rec, "source": source})
+        return jsonify({
+            "ok":       True,
+            "km":       km,
+            "source":   source,
+            "previous": rec.get("previous"),
+            "saved":    True,
+        })
+
+    return jsonify({"ok": True, "km": km, "source": source, "saved": False})
+
+
+@bp.route("/api/odometer/manual", methods=["POST"])
+def api_odometer_manual():
+    """Enregistre une saisie manuelle de kilométrage.
+
+    Body JSON requis :
+        { "vin": "VF1...", "km": 145320, "force": false (optionnel) }
+    """
+    data  = request.get_json(silent=True) or {}
+    vin   = (data.get("vin") or "").strip().upper()
+    km    = data.get("km")
+    force = bool(data.get("force", False))
+
+    if not vin:
+        return jsonify({"ok": False, "reason": "vin_required"}), 400
+    if km is None:
+        return jsonify({"ok": False, "reason": "km_required"}), 400
+
+    rec = fleet.record_odometer(vin, km, source="manual", force=force)
+    _log(f"[odometer] saisie manuelle vin={vin} km={km} force={force} ok={rec['ok']}")
+    return jsonify(rec)
+
+
 @bp.route("/api/read", methods=["POST"])
 def api_read():
     """Lit VIN, codes DTC et données temps réel."""
