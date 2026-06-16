@@ -879,8 +879,11 @@ function askManualVin() {
 }
 
 async function startDiagnostic(opts) {
-  // Reset le flag du toast de contribution VIN pour le nouveau diagnostic
-  _vinContribOpen = false;
+  // ✨ Reset complet de l'état diagnostic AVANT toute lecture. Indispensable
+  // pour le bouton "Nouvelle lecture" qui réutilise cette fonction : sinon
+  // les résultats du diag précédent (anamnèse, monitoring, IA, audio, etc.)
+  // restent à l'écran et le nouveau diag est superposé au-dessus.
+  _resetDiagnosticFully();
   // Type de diagnostic : "panne" (défaut) ou "controle" (bilan santé)
   // Lu soit depuis opts.type, soit depuis l'attribut data-diag-type du bouton
   let diagType = (opts && opts.type) || 'panne';
@@ -4339,7 +4342,7 @@ function setupEvents() {
       p.classList.toggle('active', p.id === 'tab-diagnostic');
     });
 
-    wizardReset();
+    _resetDiagnosticFully();
     showStep('stepWelcome');
   });
   document.getElementById('btnNewReadDiag').addEventListener('click', startDiagnostic);
@@ -5629,6 +5632,56 @@ function renderECUScanResults(data, container) {
     this.textContent = '✅ Codes ajoutés';
     toast(`${dtcs.length} code(s) DTC ajouté(s) au diagnostic`, 'success', 4000);
   });
+}
+
+/** Reset COMPLET de l'état diagnostic : appelé par "Nouveau diagnostic"
+ *  (retour menu) ET "Nouvelle lecture" (relance sur le même véhicule).
+ *  Avant le fix, "Nouvelle lecture" ne réinitialisait que partiellement,
+ *  laissant les résultats IA, l'anamnèse et le monitoring du précédent diag
+ *  visibles à l'écran. */
+function _resetDiagnosticFully() {
+  wizardReset();
+  // ── State currentDiag : fresh object identique à l'init (cf. ligne 12) ──
+  state.currentDiag = {
+    vin: null, dtc_codes: [], dtc_info: {}, dtc_families: {},
+    mil_on: false, dtc_count_mil: null,
+    realtime: {}, freeze_frame: {}, analyse_ia: null,
+    kilometrage: 0, savedEntry: null,
+    vehicle_manual: null, vehicle_decoded: null,
+    anamnese: null,
+    _audio_peaks: null, _audio_interps: null,
+    vin_manually_entered: false,
+  };
+  state.diagSaved = false;
+  _vinContribOpen = false;
+
+  // ── UI : bandeau véhicule ──
+  const vinDisplay     = document.getElementById('vinDisplay');
+  const vehicleLabel   = document.getElementById('vehicleLabel');
+  const simTag         = document.getElementById('simTag');
+  const vehicleOdo     = document.getElementById('vehicleOdometer');
+  if (vinDisplay)   vinDisplay.textContent = 'VIN —';
+  if (vehicleLabel) vehicleLabel.innerHTML = 'Marque / Année';
+  if (simTag)       simTag.classList.add('hidden');
+  if (vehicleOdo)   { vehicleOdo.innerHTML = ''; vehicleOdo.classList.add('hidden'); }
+  document.getElementById('vinManualZone')?.classList.add('hidden');
+  document.getElementById('btnEditVin')?.classList.remove('hidden');
+
+  // ── UI : zones diagnostic (DTC, freeze frame, kilométrage, IA, chat) ──
+  const dtcList = document.getElementById('dtcList');
+  if (dtcList) dtcList.innerHTML = '';
+  document.getElementById('freezeFrameSection')?.classList.add('hidden');
+  const inputKm = document.getElementById('inputKm');
+  if (inputKm) inputKm.value = '';
+  const step1Summary = document.getElementById('step1Summary');
+  if (step1Summary) { step1Summary.classList.add('hidden'); step1Summary.style.color = ''; }
+
+  // ── UI : barre d'action + résultats IA + chat + feedback sauvegarde ──
+  document.getElementById('actionBar')?.classList.add('hidden');
+  document.getElementById('saveFeedback')?.classList.add('hidden');
+  const aiResults = document.getElementById('aiResults');
+  if (aiResults) { aiResults.classList.add('hidden'); aiResults.innerHTML = ''; }
+  document.getElementById('chatSection')?.classList.add('hidden');
 }
 
 function wizardReset() {
