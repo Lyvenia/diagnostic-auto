@@ -976,7 +976,9 @@ async function startDiagnostic(opts) {
     }
     wizardSetDotState(1, 'done');
     wizardSetCardState(1, 'done');
-    document.getElementById('wizardStep1')?.querySelector('.wizard-card-actions')?.classList?.add('hidden');
+    // Ne PAS cacher les actions de l'étape 1 : "Effacer les codes" et
+    // "Scan tous modules" doivent rester accessibles tout au long du diag
+    // (l'utilisateur veut souvent effacer APRÈS avoir analysé les codes).
     // Afficher l'anamnèse avant le monitoring
     anamneseShow();
     wizardActivateStep(2);
@@ -4345,7 +4347,12 @@ function setupEvents() {
     _resetDiagnosticFully();
     showStep('stepWelcome');
   });
-  document.getElementById('btnNewReadDiag').addEventListener('click', startDiagnostic);
+  // "Nouvelle lecture" : reset complet + retour à la page de choix
+  // panne/bilan (au lieu de relancer directement un diag de "panne").
+  document.getElementById('btnNewReadDiag').addEventListener('click', () => {
+    _resetDiagnosticFully();
+    showStep('stepWelcome');
+  });
 
   // VIN manuel
   document.getElementById('btnEditVin')?.addEventListener('click', () => {
