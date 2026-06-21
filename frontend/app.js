@@ -6095,6 +6095,59 @@ function snoozeUpdate() {
   document.getElementById('updateBanner').style.display = 'none';
 }
 
+/** Affiche un overlay plein écran non-fermable pendant l'install pour
+ *  empêcher l'utilisateur de fermer RODIA en panique (cf. logs 21/06 :
+ *  utilisateur a forcé la fermeture car la fenêtre Edge restait orpheline
+ *  après l'arrêt de Flask, croyant à un bug). */
+function _showUpdateOverlay(version) {
+  // Supprime un overlay déjà présent (sécurité)
+  document.getElementById('updateInstallOverlay')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'updateInstallOverlay';
+  overlay.style.cssText = [
+    'position:fixed', 'inset:0',
+    'background:rgba(13,31,13,0.97)',
+    'z-index:99999',
+    'display:flex', 'flex-direction:column',
+    'align-items:center', 'justify-content:center',
+    'color:#e8f0e8', 'text-align:center',
+    'font-family:Arial,Helvetica,sans-serif',
+    'padding:32px',
+    // Empêche les interactions souris/clavier de fermer accidentellement
+    'user-select:none', 'cursor:wait',
+  ].join(';');
+  overlay.innerHTML = `
+    <div style="font-size:4.5rem;margin:0 0 24px;animation:_rodiaSpin 2s linear infinite">🔄</div>
+    <h1 style="font-size:1.8rem;margin:0 0 12px;color:#e8b4a4;font-weight:800">
+      Mise à jour RODIA${version ? ' vers v' + version : ''} en cours
+    </h1>
+    <p style="font-size:1.05rem;max-width:520px;line-height:1.65;margin:0 0 28px;color:rgba(232,240,232,0.92)">
+      Téléchargement et installation en arrière-plan.<br>
+      <strong>RODIA va se fermer puis se relancer automatiquement</strong> dans environ 2 minutes.
+    </p>
+    <div style="background:rgba(232,180,164,0.12);border:1px solid rgba(232,180,164,0.35);
+                border-radius:8px;padding:14px 22px;max-width:480px;margin-bottom:32px">
+      <p style="margin:0;font-size:0.95rem;color:#e8b4a4;line-height:1.5">
+        ⚠️ <strong>Ne fermez pas cette fenêtre manuellement.</strong><br>
+        <span style="color:rgba(232,180,164,0.75);font-size:0.88rem">
+          Elle disparaîtra toute seule. Vos données restent intactes.
+        </span>
+      </p>
+    </div>
+    <div id="updateOverlayStatus" style="font-size:1rem;opacity:0.85">Préparation…</div>
+  `;
+  // Animation rotation pour l'emoji 🔄
+  if (!document.getElementById('_rodiaSpinStyle')) {
+    const style = document.createElement('style');
+    style.id = '_rodiaSpinStyle';
+    style.textContent = '@keyframes _rodiaSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}';
+    document.head.appendChild(style);
+  }
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
 async function applyUpdate() {
   if (!_updateDownloadUrl || _isUpdating) return;
   _isUpdating = true;
@@ -6115,25 +6168,45 @@ async function applyUpdate() {
       version:      _updateVersion,
     });
 
-    // 2. Compte à rebours visible (mise à jour silencieuse en arrière-plan)
+    // 2. Overlay plein écran IMMÉDIATEMENT après la confirmation backend.
+    //    Bloque l'écran pour qu'aucun panique ne ferme la fenêtre en croyant
+    //    à un bug pendant que l'install silencieuse tourne en background.
+    const overlay   = _showUpdateOverlay(_updateVersion);
+    const statusEl  = document.getElementById('updateOverlayStatus');
+
+    // 3. Compte à rebours visible dans l'overlay (5s)
     for (let i = 5; i >= 1; i--) {
       const msg = i > 1
-        ? `Fermeture dans ${i} secondes… La mise à jour s'installe en arrière-plan.`
-        : `Fermeture dans 1 seconde… RODIA se relancera automatiquement.`;
+        ? `Fermeture dans ${i} secondes…`
+        : `Fermeture dans 1 seconde…`;
+      if (statusEl)    statusEl.textContent = msg;
       if (countdownEl) countdownEl.textContent = msg;
       btn.textContent = `Fermeture dans ${i}s…`;
       await new Promise(r => setTimeout(r, 1000));
     }
 
-    // 3. Message final juste avant que Flask coupe la connexion
-    if (countdownEl) countdownEl.textContent = "Mise à jour en cours… RODIA va se relancer dans quelques secondes.";
+    // 4. Message final + tentative de fermeture propre de la fenêtre Edge.
+    //    window.close() marche en mode Edge --app (mais pas en navigateur
+    //    classique — la fenêtre devient juste un onglet vide). Comme Flask
+    //    va être tué dans la foulée par os._exit() côté Python, on n'attend
+    //    pas la réponse.
+    if (statusEl) statusEl.textContent = 'Fermeture en cours… RODIA se relancera tout seul dans ~2 min.';
     btn.textContent = 'Mise à jour…';
+
+    // Petit délai pour que le message s'affiche, puis fermeture window.
+    setTimeout(() => {
+      try { window.close(); } catch (_) {}
+      // Fallback : si window.close ne marche pas (Edge --app bloque parfois),
+      // on essaie de minimiser au moins pour cacher l'écran vide.
+      try { window.blur(); } catch (_) {}
+    }, 800);
 
   } catch (e) {
     _isUpdating     = false;
     btn.disabled    = false;
     btn.textContent = 'Installer maintenant';
     if (countdownEl) countdownEl.textContent = '';
+    document.getElementById('updateInstallOverlay')?.remove();
     alert('Erreur : ' + e.message);
   }
 }
