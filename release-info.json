@@ -1,8 +1,8 @@
 {
-  "version": "1.1.19",
-  "download_url": "https://github.com/Lyvenia/diagnostic-auto/releases/download/v1.1.19/RODIA-Setup-v1.1.19.exe",
-  "release_notes": "Version 1.1.19",
-  "sha256": "eea206fd4870bc9db6e0b9385541b80fe182c00bd1d56bf232a187a6617ecbdf",
-  "installer": "RODIA-Setup-v1.1.19.exe",
-  "size_bytes": 38443125
+  "version": "1.1.20",
+  "download_url": "https://github.com/Lyvenia/diagnostic-auto/releases/download/v1.1.20/RODIA-Setup-v1.1.20.exe",
+  "release_notes": "Version 1.1.20",
+  "sha256": "459b26d55fd8d5c45ae361437420cc054474d279e0550e38e304811f5e2222b3",
+  "installer": "RODIA-Setup-v1.1.20.exe",
+  "size_bytes": 38441677
 }
