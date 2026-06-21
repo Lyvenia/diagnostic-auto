@@ -10,7 +10,7 @@
 ; ══════════════════════════════════════════════════════════════════════════════
 
 #define AppName      "RODIA"
-#define AppVersion   "1.1.18"
+#define AppVersion   "1.1.19"
 #define AppPublisher "Lyvenia"
 #define AppURL       "https://lyvenia.fr/rodia.html"
 #define AppExeName   "RODIA.exe"

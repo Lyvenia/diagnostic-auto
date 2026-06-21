@@ -190,16 +190,20 @@ def prepare_update_script(
         with open(ps1_path, "w", encoding="utf-8-sig") as f:
             f.write(ps1)
 
-        # Flags Windows pour TRUE detachment : si l'utilisateur ferme RODIA
-        # à la hache pendant la mise à jour, le script PowerShell continue.
-        # - CREATE_NO_WINDOW        : pas de console visible
-        # - DETACHED_PROCESS        : pas attaché à la console parent
-        # - CREATE_BREAKAWAY_FROM_JOB : sort du job object parent (ex: Edge)
-        DETACHED_PROCESS           = 0x00000008
+        # Flags Windows pour que le script PowerShell SURVIVE à la mort de
+        # RODIA (le user peut fermer la fenêtre brutalement) :
+        #
+        # - CREATE_NO_WINDOW        : pas de console visible (hidden)
+        # - CREATE_BREAKAWAY_FROM_JOB : sort du job object parent (Edge) →
+        #   ne meurt pas avec lui
+        #
+        # ⚠️ NE PAS ajouter DETACHED_PROCESS : combiné à `-NonInteractive`,
+        # PowerShell sort immédiatement sans console — l'install ne démarre
+        # même pas. Bug découvert le 21/06/2026 (Bastien — logs vides + .ps1
+        # non auto-supprimé). CREATE_BREAKAWAY_FROM_JOB suffit pour la survie
+        # au kill de RODIA, c'était lui le fix utile de v1.1.13.
         CREATE_BREAKAWAY_FROM_JOB  = 0x01000000
-        _flags = (subprocess.CREATE_NO_WINDOW
-                  | DETACHED_PROCESS
-                  | CREATE_BREAKAWAY_FROM_JOB)
+        _flags = subprocess.CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB
 
         subprocess.Popen(
             [
