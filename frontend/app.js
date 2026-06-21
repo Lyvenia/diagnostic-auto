@@ -6057,6 +6057,10 @@ async function startAppData() {
   api('GET', '/api/config/garage').then(g => { state._garage = g; }).catch(() => {});
   renderFleetManagement();
   setInterval(refreshStatus, 10000);
+  // Au lancement, atterrissage sur le tableau de bord (vue d'ensemble flotte)
+  // plutôt que sur l'écran de choix diagnostic. switchTab garantit que
+  // loadDashboard() est appelée pour rafraîchir les KPIs.
+  switchTab('dashboard');
 }
 
 // ── Auto-updater ──────────────────────────────────────────────────────────────

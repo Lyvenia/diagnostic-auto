@@ -157,14 +157,14 @@
       <nav class="sidebar-nav" aria-label="Navigation principale">
         <div class="sidebar-nav-group">
           <div class="sidebar-nav-title">Vue d'ensemble</div>
-          <button type="button" class="tab-btn" data-tab="dashboard">
+          <button type="button" class="tab-btn active" data-tab="dashboard">
             <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
             <span class="tab-label">Tableau de bord</span>
           </button>
         </div>
         <div class="sidebar-nav-group">
           <div class="sidebar-nav-title">Flotte</div>
-          <button type="button" class="tab-btn active" data-tab="diagnostic">
+          <button type="button" class="tab-btn" data-tab="diagnostic">
             <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.5.5 0 0 1-.96 0L9.24 2.18a.5.5 0 0 0-.96 0l-2.35 8.36A2 2 0 0 1 4 12H2"/></svg>
             <span class="tab-label">Diagnostic</span>
           </button>
@@ -214,7 +214,7 @@
       <div id="notifBanner" class="notif-banner hidden"></div>
 
       <!-- ═══ TAB : Diagnostic en cours ═══ -->
-      <div class="tab-panel active" id="tab-diagnostic">
+      <div class="tab-panel hidden" id="tab-diagnostic">
 
         <!-- Step 0 : Welcome / Connect — choix du type de diagnostic -->
         <div id="stepWelcome" class="step-panel">
@@ -869,7 +869,7 @@
 
 
       <!-- ═══ TAB : Tableau de bord ═══ -->
-      <div class="tab-panel hidden" id="tab-dashboard">
+      <div class="tab-panel active" id="tab-dashboard">
         <div class="dash-layout">
 
           <!-- ── Hero header ── -->
