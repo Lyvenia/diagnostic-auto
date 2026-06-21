@@ -6118,7 +6118,11 @@ function _showUpdateOverlay(version) {
     'user-select:none', 'cursor:wait',
   ].join(';');
   overlay.innerHTML = `
-    <div style="font-size:4.5rem;margin:0 0 24px;animation:_rodiaSpin 2s linear infinite">🔄</div>
+    <div style="width:64px;height:64px;margin:0 0 28px;
+                border:4px solid rgba(232,180,164,0.18);
+                border-top-color:#e8b4a4;
+                border-radius:50%;
+                animation:_rodiaSpin 0.9s linear infinite"></div>
     <h1 style="font-size:1.8rem;margin:0 0 12px;color:#e8b4a4;font-weight:800">
       Mise à jour RODIA${version ? ' vers v' + version : ''} en cours
     </h1>
